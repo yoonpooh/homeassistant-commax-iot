@@ -29,17 +29,17 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Commax IoT 설정 흐름"""
 
     VERSION = 1
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
-
-    def __init__(self):
-        """설정 흐름 초기화"""
-        self._errors: Dict[str, str] = {}
 
     async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """사용자 입력 단계"""
-        self._errors = {}
+        errors = {}
 
         if user_input is not None:
+            # 중복 설정 체크
+            await self.async_set_unique_id(user_input[CONF_USER_ID])
+            self._abort_if_unique_id_configured()
+
+            # 자격 증명 테스트
             valid = await self._test_credentials(
                 user_input[CONF_CLIENT_SECRET],
                 user_input[CONF_MOBILE_UUID],
@@ -54,7 +54,7 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data=user_input,
                 )
 
-            self._errors["base"] = "auth"
+            errors["base"] = "auth"
 
         return self.async_show_form(
             step_id="user",
@@ -69,7 +69,7 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
                 }
             ),
-            errors=self._errors,
+            errors=errors,
         )
 
     async def async_step_import(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
@@ -109,14 +109,3 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.error(f"자격 증명 테스트 실패: {e}")
 
         return False
-
-    @staticmethod
-    @config_entries.register_discovery_flow(
-        DOMAIN,
-        "Commax IoT",
-        lambda: None,
-        config_entries.CONN_CLASS_CLOUD_POLL,
-    )
-    def _async_config_flow_discovered(discovery_info):
-        """자동 검색 흐름"""
-        return CommaxIoTConfigFlow()
