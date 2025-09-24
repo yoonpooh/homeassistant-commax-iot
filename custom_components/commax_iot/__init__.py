@@ -92,7 +92,7 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """데이터 업데이트"""
         try:
-            _LOGGER.info("=== 디바이스 상태 업데이트 시작 ===")
+            _LOGGER.warning("=== 디바이스 상태 업데이트 시작 ===")
             devices = await self.auth_manager.get_device_list()
 
             if not devices:
@@ -120,8 +120,8 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
                                 _LOGGER.debug(f"  제어가능 서브디바이스[{idx}]: UUID={subdev.get('subUuid')}, 타입={subdev.get('sort')}, 값={subdev.get('value')}, 권한={subdev.get('type')}")
 
             self._devices = device_data
-            _LOGGER.info(f"디바이스 상태 업데이트 완료: {device_count}")
-            _LOGGER.info("=== 디바이스 상태 업데이트 완료 ===")
+            _LOGGER.warning(f"디바이스 상태 업데이트 완료: {device_count}")
+            _LOGGER.warning("=== 디바이스 상태 업데이트 완료 ===")
             return device_data
 
         except Exception as err:

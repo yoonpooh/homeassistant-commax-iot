@@ -161,7 +161,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             _LOGGER.error(f"온도 설정 불가 - temperature: {temperature}, setpoint_subdevice: {self._setpoint_subdevice is not None}")
             return
 
-        _LOGGER.info(f"홈어시스턴트에서 온도 설정 요청: {self._nickname} -> {temperature}°C")
+        _LOGGER.warning(f"홈어시스턴트에서 온도 설정 요청: {self._nickname} -> {temperature}°C")
         await self._send_temperature_command(str(temperature))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
@@ -171,17 +171,17 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             return
 
         value = DEVICE_ON if hvac_mode == HVACMode.HEAT else DEVICE_OFF
-        _LOGGER.info(f"홈어시스턴트에서 HVAC 모드 설정 요청: {self._nickname} -> {hvac_mode} (값: {value})")
+        _LOGGER.warning(f"홈어시스턴트에서 HVAC 모드 설정 요청: {self._nickname} -> {hvac_mode} (값: {value})")
         await self._send_mode_command(value)
 
     async def _send_temperature_command(self, temperature: str) -> None:
         """온도 설정 명령 전송"""
-        _LOGGER.info(f"=== 보일러 온도 제어 시작 - {self._nickname} ===")
-        _LOGGER.info(f"요청된 온도: {temperature}°C")
-        _LOGGER.info(f"현재 목표 온도: {self.target_temperature}°C")
-        _LOGGER.info(f"현재 온도: {self.current_temperature}°C")
-        _LOGGER.info(f"루트 UUID: {self._root_uuid}")
-        _LOGGER.info(f"온도 서브디바이스 UUID: {self._setpoint_subdevice.get('subUuid')}")
+        _LOGGER.warning(f"=== 보일러 온도 제어 시작 - {self._nickname} ===")
+        _LOGGER.warning(f"요청된 온도: {temperature}°C")
+        _LOGGER.warning(f"현재 목표 온도: {self.target_temperature}°C")
+        _LOGGER.warning(f"현재 온도: {self.current_temperature}°C")
+        _LOGGER.warning(f"루트 UUID: {self._root_uuid}")
+        _LOGGER.warning(f"온도 서브디바이스 UUID: {self._setpoint_subdevice.get('subUuid')}")
         
         device_data = {
             "subDevice": [
@@ -198,28 +198,28 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        _LOGGER.info(f"전송할 온도 명령 데이터: {device_data}")
+        _LOGGER.warning(f"전송할 온도 명령 데이터: {device_data}")
         success = await self._auth_manager.send_device_command(device_data)
         
         # 온도 설정에는 대안 값 시도를 하지 않음 (숫자 값이므로)
         
         if success:
-            _LOGGER.info(f"✅ 보일러 온도 제어 API 호출 성공 - {self._nickname}")
+            _LOGGER.warning(f"✅ 보일러 온도 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
-            _LOGGER.info(f"보일러 상태 업데이트 요청 완료 - {self._nickname}")
+            _LOGGER.warning(f"보일러 상태 업데이트 요청 완료 - {self._nickname}")
         else:
             _LOGGER.error(f"❌ 보일러 온도 제어 실패 - {self._nickname}: temperature={temperature}")
             await self.coordinator.async_request_refresh()
         
-        _LOGGER.info(f"=== 보일러 온도 제어 완료 - {self._nickname} ===")
+        _LOGGER.warning(f"=== 보일러 온도 제어 완료 - {self._nickname} ===")
 
     async def _send_mode_command(self, mode_value: str) -> None:
         """모드 설정 명령 전송"""
-        _LOGGER.info(f"=== 보일러 모드 제어 시작 - {self._nickname} ===")
-        _LOGGER.info(f"요청된 모드 값: {mode_value} ({'켜기' if mode_value == DEVICE_ON else '끄기'})")
-        _LOGGER.info(f"현재 HVAC 모드: {self.hvac_mode}")
-        _LOGGER.info(f"루트 UUID: {self._root_uuid}")
-        _LOGGER.info(f"모드 서브디바이스 UUID: {self._mode_subdevice.get('subUuid')}")
+        _LOGGER.warning(f"=== 보일러 모드 제어 시작 - {self._nickname} ===")
+        _LOGGER.warning(f"요청된 모드 값: {mode_value} ({'켜기' if mode_value == DEVICE_ON else '끄기'})")
+        _LOGGER.warning(f"현재 HVAC 모드: {self.hvac_mode}")
+        _LOGGER.warning(f"루트 UUID: {self._root_uuid}")
+        _LOGGER.warning(f"모드 서브디바이스 UUID: {self._mode_subdevice.get('subUuid')}")
         
         # 대안 값들 준비
         alternative_values = []
@@ -243,7 +243,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        _LOGGER.info(f"전송할 모드 명령 데이터: {device_data}")
+        _LOGGER.warning(f"전송할 모드 명령 데이터: {device_data}")
         success = await self._auth_manager.send_device_command(device_data)
         
         # 첫 번째 시도가 실패한 경우 대안 값들 시도
@@ -260,14 +260,14 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
                     _LOGGER.warning(f"❌ 대안 모드 값 '{alt_value}' 실패")
         
         if success:
-            _LOGGER.info(f"✅ 보일러 모드 제어 API 호출 성공 - {self._nickname}")
+            _LOGGER.warning(f"✅ 보일러 모드 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
-            _LOGGER.info(f"보일러 상태 업데이트 요청 완료 - {self._nickname}")
+            _LOGGER.warning(f"보일러 상태 업데이트 요청 완료 - {self._nickname}")
         else:
             _LOGGER.error(f"❌ 보일러 모드 제어 실패 - {self._nickname}: mode_value={mode_value}")
             await self.coordinator.async_request_refresh()
             
-        _LOGGER.info(f"=== 보일러 모드 제어 완료 - {self._nickname} ===")
+        _LOGGER.warning(f"=== 보일러 모드 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:

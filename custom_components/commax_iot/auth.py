@@ -200,11 +200,11 @@ class CommaxAuthManager:
                 }
             }
 
-            _LOGGER.info(f"=== API 제어 요청 시작: {device_data.get('nickname', 'Unknown')} ===")
-            _LOGGER.info(f"Command URL: {COMMAND_URL}")
-            _LOGGER.info(f"Resource No: {self._resource_no}")
-            _LOGGER.info(f"Authorization Header: Bearer {token[:20]}...")
-            _LOGGER.info(f"전송할 전체 command_data: {command_data}")
+            _LOGGER.warning(f"=== API 제어 요청 시작: {device_data.get('nickname', 'Unknown')} ===")
+            _LOGGER.warning(f"Command URL: {COMMAND_URL}")
+            _LOGGER.warning(f"Resource No: {self._resource_no}")
+            _LOGGER.warning(f"Authorization Header: Bearer {token[:20]}...")
+            _LOGGER.warning(f"전송할 전체 command_data: {command_data}")
 
             async with self._session.post(COMMAND_URL, json=command_data, headers=headers) as response:
                 _LOGGER.info(f"HTTP 응답 상태: {response.status}")
@@ -238,21 +238,21 @@ class CommaxAuthManager:
                     return False
                 else:
                     result = await response.json()
-                    _LOGGER.info(f"성공 API 응답: {result}")
+                    _LOGGER.warning(f"성공 API 응답: {result}")
 
                 result_code = result.get("resultCode")
                 result_message = result.get('resultMessage', '메시지 없음')
                 
-                _LOGGER.info(f"API 결과 코드: {result_code}")
-                _LOGGER.info(f"API 결과 메시지: {result_message}")
+                _LOGGER.warning(f"API 결과 코드: {result_code}")
+                _LOGGER.warning(f"API 결과 메시지: {result_message}")
                 
                 if result_code != API_SUCCESS_CODE:
                     _LOGGER.error(f"❌ 디바이스 제어 API 실패: 코드={result_code}, 메시지={result_message}")
                     _LOGGER.error(f"전체 오류 응답: {result}")
                     return False
 
-                _LOGGER.info(f"✅ 디바이스 제어 API 성공")
-                _LOGGER.info(f"=== API 제어 요청 완료 ===")
+                _LOGGER.warning(f"✅ 디바이스 제어 API 성공")
+                _LOGGER.warning(f"=== API 제어 요청 완료 ===")
                 return True
 
         except Exception as e:

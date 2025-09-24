@@ -95,16 +95,30 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
     def is_on(self) -> bool:
         """스위치가 켜져 있는지 반환"""
         if not self._switch_subdevice:
+            _LOGGER.debug(f"is_on 체크: 스위치 서브디바이스 없음 - {self._nickname}")
             return False
 
         device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
         if not device_data:
+            _LOGGER.debug(f"is_on 체크: 디바이스 데이터를 찾을 수 없음 - {self._root_uuid}")
             return False
 
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
-                return subdevice.get("value") == DEVICE_ON
+                current_value = subdevice.get("value")
+                # 다양한 형식의 "on" 값들 체크
+                possible_on_values = [DEVICE_ON, "1", "true", "True", "ON", "on"]
+                is_on = current_value in possible_on_values
+                
+                _LOGGER.debug(f"스위치 상태 상세 체크 - {self._nickname}:")
+                _LOGGER.debug(f"  서브디바이스 UUID: {subdevice.get('subUuid')}")
+                _LOGGER.debug(f"  현재 값: '{current_value}' (type: {type(current_value)})")
+                _LOGGER.debug(f"  가능한 ON 값들: {possible_on_values}")
+                _LOGGER.debug(f"  결과: {'ON' if is_on else 'OFF'}")
+                
+                return is_on
 
+        _LOGGER.debug(f"is_on 체크: 서브디바이스를 찾을 수 없음 - UUID: {self._switch_subdevice.get('subUuid')}")
         return False
 
     @property
@@ -118,7 +132,7 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
-        _LOGGER.info(f"홈어시스턴트에서 스위치 켜기 요청: {self._nickname}")
+        _LOGGER.warning(f"홈어시스턴트에서 스위치 켜기 요청: {self._nickname}")
         await self._send_command(DEVICE_ON)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -127,16 +141,16 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
-        _LOGGER.info(f"홈어시스턴트에서 스위치 끄기 요청: {self._nickname}")
+        _LOGGER.warning(f"홈어시스턴트에서 스위치 끄기 요청: {self._nickname}")
         await self._send_command(DEVICE_OFF)
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
-        _LOGGER.info(f"=== 스위치 제어 시작 - {self._nickname} ===")
-        _LOGGER.info(f"요청된 동작: {value} ({'켜기' if value == DEVICE_ON else '끄기'})")
-        _LOGGER.info(f"현재 상태: {'켜짐' if self.is_on else '꺼짐'}")
-        _LOGGER.info(f"루트 UUID: {self._root_uuid}")
-        _LOGGER.info(f"스위치 서브디바이스 UUID: {self._switch_subdevice.get('subUuid')}")
+        _LOGGER.warning(f"=== 스위치 제어 시작 - {self._nickname} ===")
+        _LOGGER.warning(f"요청된 동작: {value} ({'켜기' if value == DEVICE_ON else '끄기'})")
+        _LOGGER.warning(f"현재 상태: {'켜짐' if self.is_on else '꺼짐'}")
+        _LOGGER.warning(f"루트 UUID: {self._root_uuid}")
+        _LOGGER.warning(f"스위치 서브디바이스 UUID: {self._switch_subdevice.get('subUuid')}")
         
         # 대안 값들 준비
         alternative_values = []
@@ -160,7 +174,7 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        _LOGGER.info(f"전송할 스위치 명령 데이터: {device_data}")
+        _LOGGER.warning(f"전송할 스위치 명령 데이터: {device_data}")
         success = await self._auth_manager.send_device_command(device_data)
         
         # 첫 번째 시도가 실패한 경우 대안 값들 시도
@@ -177,14 +191,14 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
                     _LOGGER.warning(f"❌ 대안 값 '{alt_value}' 실패")
         
         if success:
-            _LOGGER.info(f"✅ 스위치 제어 API 호출 성공 - {self._nickname}")
+            _LOGGER.warning(f"✅ 스위치 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
-            _LOGGER.info(f"스위치 상태 업데이트 요청 완료 - {self._nickname}")
+            _LOGGER.warning(f"스위치 상태 업데이트 요청 완료 - {self._nickname}")
         else:
             _LOGGER.error(f"❌ 스위치 제어 실패 - {self._nickname}: value={value}")
             await self.coordinator.async_request_refresh()
             
-        _LOGGER.info(f"=== 스위치 제어 완료 - {self._nickname} ===")
+        _LOGGER.warning(f"=== 스위치 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:
