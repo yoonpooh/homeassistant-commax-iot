@@ -32,12 +32,32 @@ async def async_setup_entry(
 
     entities = []
 
-    await coordinator.async_refresh()
+    # 데이터가 준비될 때까지 기다림
+    if not coordinator.data:
+        await coordinator.async_refresh()
+
+    # 데이터가 여전히 없으면 빈 리스트로 초기화
+    if not coordinator.data:
+        _LOGGER.warning("디바이스 데이터를 가져올 수 없어 조명 엔터티를 생성할 수 없습니다")
+        coordinator.data = {}
 
     for device_uuid, device_data in coordinator.data.items():
         if device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT:
-            entities.append(CommaxLight(coordinator, auth_manager, device_data))
+            # 필수 subDevice 확인
+            has_switch = False
+            for subdevice in device_data.get("subDevice", []):
+                if (subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and
+                    subdevice.get("type") == "readWrite"):
+                    has_switch = True
+                    break
 
+            if has_switch:
+                entities.append(CommaxLight(coordinator, auth_manager, device_data))
+                _LOGGER.info(f"조명 디바이스 등록: {device_data.get('nickname')}")
+            else:
+                _LOGGER.warning(f"조명 디바이스에 제어 가능한 스위치가 없음: {device_data.get('nickname')}")
+
+    _LOGGER.info(f"총 {len(entities)}개의 조명 디바이스 등록됨")
     if entities:
         async_add_entities(entities, True)
 
@@ -77,12 +97,17 @@ class CommaxLight(CoordinatorEntity, LightEntity):
 
         device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
         if not device_data:
+            _LOGGER.debug(f"디바이스 데이터를 찾을 수 없음: {self._root_uuid}")
             return False
 
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
-                return subdevice.get("value") == DEVICE_ON
+                current_value = subdevice.get("value")
+                is_on = current_value == DEVICE_ON
+                _LOGGER.debug(f"조명 상태 확인 - {self._nickname}: value={current_value}, is_on={is_on}")
+                return is_on
 
+        _LOGGER.debug(f"서브디바이스를 찾을 수 없음: {self._switch_subdevice.get('subUuid')}")
         return False
 
     @property
@@ -108,6 +133,10 @@ class CommaxLight(CoordinatorEntity, LightEntity):
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
+        if not self._switch_subdevice:
+            _LOGGER.error(f"스위치 서브디바이스가 없어 제어할 수 없음: {self._nickname}")
+            return
+
         device_data = {
             "subDevice": [
                 {
@@ -123,11 +152,17 @@ class CommaxLight(CoordinatorEntity, LightEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
+        _LOGGER.info(f"조명 제어 명령 전송 - {self._nickname}: {value}")
         success = await self._auth_manager.send_device_command(device_data)
+
         if success:
+            _LOGGER.info(f"조명 제어 성공 - {self._nickname}")
+            # 즉시 상태 업데이트 요청
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error(f"조명 제어 실패: {self._nickname}")
+            _LOGGER.error(f"조명 제어 실패 - {self._nickname}: value={value}")
+            # 실패 시에도 상태 업데이트를 시도하여 현재 상태 동기화
+            await self.coordinator.async_request_refresh()
 
     @callback
     def _handle_coordinator_update(self) -> None:

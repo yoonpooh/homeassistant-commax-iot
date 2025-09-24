@@ -48,7 +48,10 @@ class CommaxAuthManager:
     async def authenticate(self) -> bool:
         """인증 수행"""
         try:
-            encoded_password = hashlib.md5(self._user_pass.encode()).hexdigest()
+            import urllib.parse
+
+            # homebridge 플러그인과 동일한 방식으로 패스워드 처리
+            encoded_password = urllib.parse.quote(self._user_pass)
 
             auth_data = {
                 "clientSecret": self._client_secret,
@@ -63,16 +66,22 @@ class CommaxAuthManager:
                 "clientId": DEFAULT_CLIENT_ID,
             }
 
-            _LOGGER.debug("인증 시도 중...")
+            _LOGGER.info("=== Commax IoT 인증 시작 ===")
+            _LOGGER.info(f"사용자 ID: {self._user_id}")
+            _LOGGER.info(f"Mobile UUID: {self._mobile_uuid}")
+            _LOGGER.info(f"Auth URL: {AUTH_URL}")
+
             async with self._session.post(AUTH_URL, json=auth_data) as response:
+                _LOGGER.info(f"HTTP 응답 상태: {response.status}")
                 if response.status != 200:
                     _LOGGER.error(f"인증 요청 실패: HTTP {response.status}")
                     return False
 
                 result = await response.json()
+                _LOGGER.info(f"인증 응답 코드: {result.get('resultCode')}")
 
                 if result.get("resultCode") != API_SUCCESS_CODE:
-                    _LOGGER.error(f"인증 실패: {result.get('resultMessage', '알 수 없는 오류')}")
+                    _LOGGER.error(f"Commax IoT 인증 실패: {result.get('resultCode')} - {result.get('resultMessage', '알 수 없는 오류')}")
                     return False
 
                 self._access_token = result.get("accessToken")
@@ -81,7 +90,8 @@ class CommaxAuthManager:
                 self._token_expires_at = int(time.time()) + expire_in
                 self._authenticated = True
 
-                _LOGGER.info("인증 성공")
+                _LOGGER.info("=== Commax IoT 인증 성공 ===")
+                _LOGGER.info(f"토큰 만료일: {time.ctime(self._token_expires_at)}")
                 return True
 
         except Exception as e:
@@ -121,8 +131,10 @@ class CommaxAuthManager:
         try:
             headers = {"Authorization": f"Bearer {token}"}
             url = f"{DEVICE_LIST_URL}?resourceNo={self._resource_no}"
+            _LOGGER.info(f"디바이스 목록 조회: {url}")
 
             async with self._session.get(url, headers=headers) as response:
+                _LOGGER.info(f"디바이스 목록 HTTP 응답 상태: {response.status}")
                 if response.status == 401:
                     _LOGGER.warning("토큰 만료, 재인증 시도")
                     self._authenticated = False
@@ -146,7 +158,9 @@ class CommaxAuthManager:
                     _LOGGER.error(f"디바이스 목록 조회 실패: {result.get('resultMessage', '알 수 없는 오류')}")
                     return []
 
-                devices = result.get("resultBody", {}).get("device", [])
+                # homebridge 플러그인과 동일한 구조로 수정
+                resource = result.get("resource", {})
+                devices = resource.get("devices", {}).get("object", [])
                 _LOGGER.debug(f"{len(devices)}개의 디바이스를 찾았습니다")
                 return devices
 

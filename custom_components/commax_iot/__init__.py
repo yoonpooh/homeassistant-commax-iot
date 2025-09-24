@@ -92,18 +92,34 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """데이터 업데이트"""
         try:
+            _LOGGER.debug("디바이스 상태 업데이트 시작")
             devices = await self.auth_manager.get_device_list()
 
+            if not devices:
+                _LOGGER.warning("디바이스 목록이 비어있습니다")
+                return self._devices or {}
+
             device_data = {}
+            device_count = {"light": 0, "boiler": 0, "switch": 0, "fan": 0}
+
             for device in devices:
                 root_uuid = device.get("rootUuid")
                 if root_uuid:
                     device_data[root_uuid] = device
+                    device_type = device.get("commaxDevice", "unknown")
+                    if device_type in device_count:
+                        device_count[device_type] += 1
 
             self._devices = device_data
+            _LOGGER.debug(f"디바이스 상태 업데이트 완료: {device_count}")
             return device_data
 
         except Exception as err:
+            _LOGGER.error(f"데이터 업데이트 중 오류: {err}")
+            # 기존 데이터가 있으면 유지, 없으면 빈 딕셔너리 반환
+            if self._devices:
+                _LOGGER.warning("기존 디바이스 데이터를 유지합니다")
+                return self._devices
             raise UpdateFailed(f"데이터 업데이트 실패: {err}") from err
 
     def get_device_by_uuid(self, root_uuid: str):

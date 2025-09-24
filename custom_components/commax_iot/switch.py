@@ -32,15 +32,35 @@ async def async_setup_entry(
 
     entities = []
 
-    await coordinator.async_refresh()
+    # 데이터가 준비될 때까지 기다림
+    if not coordinator.data:
+        await coordinator.async_refresh()
+
+    # 데이터가 여전히 없으면 빈 리스트로 초기화
+    if not coordinator.data:
+        _LOGGER.warning("디바이스 데이터를 가져올 수 없어 스위치 엔터티를 생성할 수 없습니다")
+        coordinator.data = {}
 
     for device_uuid, device_data in coordinator.data.items():
         if (
             device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
             and device_data.get("rootDevice") == "switch"
         ):
-            entities.append(CommaxSwitch(coordinator, auth_manager, device_data))
+            # 필수 subDevice 확인
+            has_switch = False
+            for subdevice in device_data.get("subDevice", []):
+                if (subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and
+                    subdevice.get("type") == "readWrite"):
+                    has_switch = True
+                    break
 
+            if has_switch:
+                entities.append(CommaxSwitch(coordinator, auth_manager, device_data))
+                _LOGGER.info(f"스위치 디바이스 등록: {device_data.get('nickname')}")
+            else:
+                _LOGGER.warning(f"스위치 디바이스에 제어 가능한 스위치가 없음: {device_data.get('nickname')}")
+
+    _LOGGER.info(f"총 {len(entities)}개의 스위치 디바이스 등록됨")
     if entities:
         async_add_entities(entities, True)
 
