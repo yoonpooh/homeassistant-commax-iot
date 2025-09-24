@@ -69,7 +69,10 @@ class CommaxAuthManager:
             _LOGGER.info("=== Commax IoT 인증 시작 ===")
             _LOGGER.info(f"사용자 ID: {self._user_id}")
             _LOGGER.info(f"Mobile UUID: {self._mobile_uuid}")
+            _LOGGER.info(f"Resource No: {self._resource_no}")
+            _LOGGER.info(f"Client Secret: {self._client_secret[:10]}...")
             _LOGGER.info(f"Auth URL: {AUTH_URL}")
+            _LOGGER.debug(f"전송할 인증 데이터: {auth_data}")
 
             async with self._session.post(AUTH_URL, json=auth_data) as response:
                 _LOGGER.info(f"HTTP 응답 상태: {response.status}")
@@ -95,7 +98,9 @@ class CommaxAuthManager:
                 return True
 
         except Exception as e:
-            _LOGGER.error(f"인증 중 오류 발생: {e}")
+            _LOGGER.error(f"인증 중 예외 발생: {type(e).__name__}: {e}")
+            import traceback
+            _LOGGER.error(f"Auth Stack trace: {traceback.format_exc()}")
             return False
 
     async def get_access_token(self) -> Optional[str]:
@@ -195,33 +200,63 @@ class CommaxAuthManager:
                 }
             }
 
+            _LOGGER.info(f"=== API 제어 요청 시작: {device_data.get('nickname', 'Unknown')} ===")
+            _LOGGER.info(f"Command URL: {COMMAND_URL}")
+            _LOGGER.info(f"Resource No: {self._resource_no}")
+            _LOGGER.info(f"Authorization Header: Bearer {token[:20]}...")
+            _LOGGER.info(f"전송할 전체 command_data: {command_data}")
+
             async with self._session.post(COMMAND_URL, json=command_data, headers=headers) as response:
+                _LOGGER.info(f"HTTP 응답 상태: {response.status}")
+                
+                # 응답 헤더 로깅
+                _LOGGER.debug(f"Response Headers: {dict(response.headers)}")
+                
                 if response.status == 401:
                     _LOGGER.warning("토큰 만료, 재인증 시도")
                     self._authenticated = False
                     token = await self.get_access_token()
                     if token:
                         headers["Authorization"] = f"Bearer {token}"
+                        _LOGGER.info("재인증 후 재시도")
                         async with self._session.post(COMMAND_URL, json=command_data, headers=headers) as retry_response:
+                            _LOGGER.info(f"재시도 HTTP 응답 상태: {retry_response.status}")
                             if retry_response.status != 200:
-                                _LOGGER.error(f"디바이스 제어 실패: HTTP {retry_response.status}")
+                                response_text = await retry_response.text()
+                                _LOGGER.error(f"디바이스 제어 재시도 실패: HTTP {retry_response.status}")
+                                _LOGGER.error(f"재시도 응답 내용: {response_text}")
                                 return False
                             result = await retry_response.json()
+                            _LOGGER.info(f"재시도 API 응답: {result}")
                     else:
+                        _LOGGER.error("재인증 실패")
                         return False
                 elif response.status != 200:
+                    response_text = await response.text()
                     _LOGGER.error(f"디바이스 제어 실패: HTTP {response.status}")
+                    _LOGGER.error(f"오류 응답 내용: {response_text}")
                     return False
                 else:
                     result = await response.json()
+                    _LOGGER.info(f"성공 API 응답: {result}")
 
-                if result.get("resultCode") != API_SUCCESS_CODE:
-                    _LOGGER.error(f"디바이스 제어 실패: {result.get('resultMessage', '알 수 없는 오류')}")
+                result_code = result.get("resultCode")
+                result_message = result.get('resultMessage', '메시지 없음')
+                
+                _LOGGER.info(f"API 결과 코드: {result_code}")
+                _LOGGER.info(f"API 결과 메시지: {result_message}")
+                
+                if result_code != API_SUCCESS_CODE:
+                    _LOGGER.error(f"❌ 디바이스 제어 API 실패: 코드={result_code}, 메시지={result_message}")
+                    _LOGGER.error(f"전체 오류 응답: {result}")
                     return False
 
-                _LOGGER.debug("디바이스 제어 성공")
+                _LOGGER.info(f"✅ 디바이스 제어 API 성공")
+                _LOGGER.info(f"=== API 제어 요청 완료 ===")
                 return True
 
         except Exception as e:
-            _LOGGER.error(f"디바이스 제어 중 오류: {e}")
+            _LOGGER.error(f"디바이스 제어 중 예외 발생: {type(e).__name__}: {e}")
+            import traceback
+            _LOGGER.error(f"Stack trace: {traceback.format_exc()}")
             return False

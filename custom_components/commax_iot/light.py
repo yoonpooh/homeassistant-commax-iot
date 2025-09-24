@@ -1,4 +1,5 @@
 """Commax IoT 조명 플랫폼"""
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -125,6 +126,7 @@ class CommaxLight(CoordinatorEntity, LightEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
+        _LOGGER.info(f"홍어시스턴트에서 조명 켜기 요청: {self._nickname}")
         await self._send_command(DEVICE_ON)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -133,6 +135,7 @@ class CommaxLight(CoordinatorEntity, LightEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
+        _LOGGER.info(f"홍어시스턴트에서 조명 끄기 요청: {self._nickname}")
         await self._send_command(DEVICE_OFF)
 
     async def _send_command(self, value: str) -> None:
@@ -141,6 +144,38 @@ class CommaxLight(CoordinatorEntity, LightEntity):
             _LOGGER.error(f"스위치 서브디바이스가 없어 제어할 수 없음: {self._nickname}")
             return
 
+        # 현재 디바이스 상태 로깅
+        _LOGGER.info(f"=== 조명 제어 시작 - {self._nickname} ===")
+        _LOGGER.info(f"요청된 동작: {value} ({'켜기' if value == DEVICE_ON else '끄기'})")
+        _LOGGER.info(f"현재 상태: {'켜짐' if self.is_on else '꺼짐'}")
+        _LOGGER.info(f"루트 UUID: {self._root_uuid}")
+        _LOGGER.info(f"스위치 서브디바이스 UUID: {self._switch_subdevice.get('subUuid')}")
+        _LOGGER.debug(f"스위치 서브디바이스 전체 정보: {self._switch_subdevice}")
+        
+        # 원본 디바이스 데이터도 로깅
+        current_device = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if current_device:
+            _LOGGER.debug(f"현재 디바이스 전체 정보: {current_device}")
+            for idx, subdev in enumerate(current_device.get('subDevice', [])):
+                _LOGGER.debug(f"서브디바이스[{idx}]: UUID={subdev.get('subUuid')}, 타입={subdev.get('sort')}, 값={subdev.get('value')}, 권한={subdev.get('type')}")
+
+        # 다양한 값 형식으로 시도해보기 위한 로깅
+        _LOGGER.info(f"const.py에서 정의된 값들:")
+        _LOGGER.info(f"  DEVICE_ON = '{DEVICE_ON}' (켜기)")
+        _LOGGER.info(f"  DEVICE_OFF = '{DEVICE_OFF}' (끄기)")
+        _LOGGER.info(f"  DEVICE_VALUE_ON = '{DEVICE_VALUE_ON}' (상태 체크용)")
+        _LOGGER.info(f"  DEVICE_VALUE_OFF = '{DEVICE_VALUE_OFF}' (상태 체크용)")
+        _LOGGER.info(f"기본 전송할 값: '{value}'")
+        
+        # 대안 값들 준비 (실패 시 시도해볼 값들)
+        alternative_values = []
+        if value == DEVICE_ON:
+            alternative_values = ["on", "true", "True", "1", "ON"]
+        elif value == DEVICE_OFF:
+            alternative_values = ["off", "false", "False", "0", "OFF"]
+        
+        _LOGGER.info(f"대안 값들: {alternative_values}")
+        
         device_data = {
             "subDevice": [
                 {
@@ -155,18 +190,65 @@ class CommaxLight(CoordinatorEntity, LightEntity):
             "nickname": self._nickname,
             "rootDevice": self._device_data.get("rootDevice"),
         }
+        
+        # 전송될 JSON 구조 상세 로깅
+        _LOGGER.info(f"JSON 구조 상세:")
+        _LOGGER.info(f"  rootUuid: {device_data['rootUuid']}")
+        _LOGGER.info(f"  nickname: {device_data['nickname']}")
+        _LOGGER.info(f"  rootDevice: {device_data['rootDevice']}")
+        _LOGGER.info(f"  subDevice[0].value: {device_data['subDevice'][0]['value']}")
+        _LOGGER.info(f"  subDevice[0].subUuid: {device_data['subDevice'][0]['subUuid']}")
+        _LOGGER.info(f"  subDevice[0].sort: {device_data['subDevice'][0]['sort']}")
+        _LOGGER.info(f"  subDevice[0].funcCommand: {device_data['subDevice'][0]['funcCommand']}")
+        _LOGGER.info(f"  subDevice[0].type: {device_data['subDevice'][0]['type']}")
 
-        _LOGGER.info(f"조명 제어 명령 전송 - {self._nickname}: {value}")
+        _LOGGER.info(f"전송할 명령 데이터: {device_data}")
+
         success = await self._auth_manager.send_device_command(device_data)
 
+        # 첫 번째 시도가 실패한 경우 대안 값들 시도
+        if not success and alternative_values:
+            _LOGGER.warning(f"기본 값 '{value}' 실패, 대안 값들 시도 중...")
+            for alt_value in alternative_values:
+                _LOGGER.info(f"대안 값 시도: '{alt_value}'")
+                
+                # device_data 업데이트
+                device_data["subDevice"][0]["value"] = alt_value
+                
+                success = await self._auth_manager.send_device_command(device_data)
+                if success:
+                    _LOGGER.info(f"✅ 대안 값 '{alt_value}' 성공!")
+                    # 성공한 값을 const.py에 업데이트하도록 권장
+                    _LOGGER.info(f"⚠️ const.py에서 DEVICE_ON/DEVICE_OFF 값을 '{alt_value}' 스타일로 변경하는 것을 고려하세요")
+                    break
+                else:
+                    _LOGGER.warning(f"❌ 대안 값 '{alt_value}' 실패")
+
         if success:
-            _LOGGER.info(f"조명 제어 성공 - {self._nickname}")
-            # 즉시 상태 업데이트 요청
+            _LOGGER.info(f"✅ 조명 제어 API 호출 성공 - {self._nickname}")
+            # 잠시 대기 후 상태 업데이트
+            await asyncio.sleep(1)
             await self.coordinator.async_request_refresh()
+            _LOGGER.info(f"조명 상태 업데이트 요청 완료 - {self._nickname}")
+            
+            # 업데이트 후 상태 확인
+            await asyncio.sleep(1)
+            updated_device = self.coordinator.get_device_by_uuid(self._root_uuid)
+            if updated_device:
+                for subdev in updated_device.get('subDevice', []):
+                    if subdev.get('subUuid') == self._switch_subdevice.get('subUuid'):
+                        _LOGGER.info(f"업데이트 후 상태: {subdev.get('value')} (예상: {DEVICE_VALUE_ON if value == DEVICE_ON else DEVICE_VALUE_OFF})")
+                        if subdev.get('value') == (DEVICE_VALUE_ON if value == DEVICE_ON else DEVICE_VALUE_OFF):
+                            _LOGGER.info("✅ 상태 변경 성공 확인")
+                        else:
+                            _LOGGER.warning("⚠️ 상태 변경이 반영되지 않음")
+                        break
         else:
-            _LOGGER.error(f"조명 제어 실패 - {self._nickname}: value={value}")
+            _LOGGER.error(f"❌ 조명 제어 API 호출 실패 - {self._nickname}: value={value}")
             # 실패 시에도 상태 업데이트를 시도하여 현재 상태 동기화
             await self.coordinator.async_request_refresh()
+            
+        _LOGGER.info(f"=== 조명 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:
