@@ -1,7 +1,7 @@
 {
   "domain": "commax_iot",
   "name": "Commax IoT",
-  "codeowners": [],
+  "codeowners": ["@yoonpooh"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/yoonpooh/homeassistant-commax-iot",
