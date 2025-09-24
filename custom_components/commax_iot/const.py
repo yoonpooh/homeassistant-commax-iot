@@ -38,8 +38,8 @@ SUBDEVICE_THERMOSTAT_SETPOINT = "thermostatSetpoint"
 SUBDEVICE_FAN_MODE = "fanMode"
 
 # 디바이스 값
-DEVICE_OFF = "0"
-DEVICE_ON = "1"
+DEVICE_OFF = "off"
+DEVICE_ON = "on"
 
 # 실제 API에서 반환되는 값들 (로그 확인 결과)
 DEVICE_VALUE_OFF = "off"
