@@ -117,16 +117,19 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """환기시스템 켜기 (manual 모드로 설정)"""
+        _LOGGER.info(f"홈어시스턴트에서 환기시스템 켜기 요청: {self._nickname}")
         await self.async_set_preset_mode("manual")
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """환기시스템 끄기 (bypass 모드로 설정)"""
+        _LOGGER.info(f"홈어시스턴트에서 환기시스템 끄기 요청: {self._nickname}")
         await self.async_set_preset_mode("bypass")
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """프리셋 모드 설정"""
         if preset_mode not in REVERSE_FAN_MODE_MAPPING:
             _LOGGER.error(f"지원하지 않는 프리셋 모드: {preset_mode}")
+            _LOGGER.info(f"지원되는 모드들: {list(REVERSE_FAN_MODE_MAPPING.keys())}")
             return
 
         if not self._fan_subdevice:
@@ -134,10 +137,23 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             return
 
         mode_value = REVERSE_FAN_MODE_MAPPING[preset_mode]
+        _LOGGER.info(f"홈어시스턴트에서 환기 모드 설정 요청: {self._nickname} -> {preset_mode} (값: {mode_value})")
         await self._send_command(mode_value)
 
     async def _send_command(self, mode_value: str) -> None:
         """디바이스 제어 명령 전송"""
+        _LOGGER.info(f"=== 환기시스템 제어 시작 - {self._nickname} ===")
+        _LOGGER.info(f"요청된 모드 값: {mode_value}")
+        _LOGGER.info(f"현재 환기 모드: {self._get_current_fan_mode()}")
+        _LOGGER.info(f"현재 프리셋 모드: {self.preset_mode}")
+        _LOGGER.info(f"루트 UUID: {self._root_uuid}")
+        _LOGGER.info(f"환기 서브디바이스 UUID: {self._fan_subdevice.get('subUuid')}")
+        
+        # FAN_MODE_MAPPING 정보 로깅
+        _LOGGER.info(f"환기 모드 매핑:")
+        for k, v in FAN_MODE_MAPPING.items():
+            _LOGGER.info(f"  {k} -> {v}")
+        
         device_data = {
             "subDevice": [
                 {
@@ -153,11 +169,18 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
+        _LOGGER.info(f"전송할 환기 명령 데이터: {device_data}")
         success = await self._auth_manager.send_device_command(device_data)
+        
         if success:
+            _LOGGER.info(f"✅ 환기시스템 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
+            _LOGGER.info(f"환기시스템 상태 업데이트 요청 완료 - {self._nickname}")
         else:
-            _LOGGER.error(f"환기시스템 제어 실패: {self._nickname}")
+            _LOGGER.error(f"❌ 환기시스템 제어 실패 - {self._nickname}: mode_value={mode_value}")
+            await self.coordinator.async_request_refresh()
+            
+        _LOGGER.info(f"=== 환기시스템 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:

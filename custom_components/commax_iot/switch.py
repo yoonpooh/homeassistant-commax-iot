@@ -118,6 +118,7 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
+        _LOGGER.info(f"홈어시스턴트에서 스위치 켜기 요청: {self._nickname}")
         await self._send_command(DEVICE_ON)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -126,10 +127,24 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
+        _LOGGER.info(f"홈어시스턴트에서 스위치 끄기 요청: {self._nickname}")
         await self._send_command(DEVICE_OFF)
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
+        _LOGGER.info(f"=== 스위치 제어 시작 - {self._nickname} ===")
+        _LOGGER.info(f"요청된 동작: {value} ({'켜기' if value == DEVICE_ON else '끄기'})")
+        _LOGGER.info(f"현재 상태: {'켜짐' if self.is_on else '꺼짐'}")
+        _LOGGER.info(f"루트 UUID: {self._root_uuid}")
+        _LOGGER.info(f"스위치 서브디바이스 UUID: {self._switch_subdevice.get('subUuid')}")
+        
+        # 대안 값들 준비
+        alternative_values = []
+        if value == DEVICE_ON:
+            alternative_values = ["on", "true", "True", "1", "ON"]
+        elif value == DEVICE_OFF:
+            alternative_values = ["off", "false", "False", "0", "OFF"]
+        
         device_data = {
             "subDevice": [
                 {
@@ -145,11 +160,31 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
+        _LOGGER.info(f"전송할 스위치 명령 데이터: {device_data}")
         success = await self._auth_manager.send_device_command(device_data)
+        
+        # 첫 번째 시도가 실패한 경우 대안 값들 시도
+        if not success and alternative_values:
+            _LOGGER.warning(f"기본 값 '{value}' 실패, 대안 값들 시도 중...")
+            for alt_value in alternative_values:
+                _LOGGER.info(f"대안 값 시도: '{alt_value}'")
+                device_data["subDevice"][0]["value"] = alt_value
+                success = await self._auth_manager.send_device_command(device_data)
+                if success:
+                    _LOGGER.info(f"✅ 대안 값 '{alt_value}' 성공!")
+                    break
+                else:
+                    _LOGGER.warning(f"❌ 대안 값 '{alt_value}' 실패")
+        
         if success:
+            _LOGGER.info(f"✅ 스위치 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
+            _LOGGER.info(f"스위치 상태 업데이트 요청 완료 - {self._nickname}")
         else:
-            _LOGGER.error(f"스위치 제어 실패: {self._nickname}")
+            _LOGGER.error(f"❌ 스위치 제어 실패 - {self._nickname}: value={value}")
+            await self.coordinator.async_request_refresh()
+            
+        _LOGGER.info(f"=== 스위치 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:
