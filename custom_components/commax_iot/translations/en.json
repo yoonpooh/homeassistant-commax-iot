@@ -16,7 +16,8 @@
       }
     },
     "error": {
-      "auth": "Authentication failed. Please check your credentials."
+      "auth": "Authentication failed. Please check your credentials.",
+      "unknown": "Unexpected error occurred"
     },
     "abort": {
       "already_configured": "Device is already configured"

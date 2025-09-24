@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Commax IoT 설정",
+        "description": "Commax IoT 인증 정보를 입력하세요",
+        "data": {
+          "name": "이름",
+          "client_secret": "클라이언트 시크릿",
+          "mobile_uuid": "모바일 UUID",
+          "user_id": "사용자 ID",
+          "user_pass": "비밀번호",
+          "resource_no": "리소스 번호",
+          "update_interval": "업데이트 간격 (초)"
+        }
+      }
+    },
+    "error": {
+      "auth": "인증에 실패했습니다. 인증 정보를 확인해주세요.",
+      "unknown": "예상치 못한 오류가 발생했습니다"
+    },
+    "abort": {
+      "already_configured": "이미 설정된 디바이스입니다"
+    }
+  }
+}

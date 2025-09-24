@@ -27,34 +27,12 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required(CONF_CLIENT_SECRET): cv.string,
-                vol.Required(CONF_MOBILE_UUID): cv.string,
-                vol.Required(CONF_USER_ID): cv.string,
-                vol.Required(CONF_USER_PASS): cv.string,
-                vol.Required(CONF_RESOURCE_NO): cv.string,
-                vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): cv.positive_int,
-            }
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
+# CONFIG_SCHEMA는 config flow 사용 시 필요 없음
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """통합 구성요소 설정"""
     hass.data.setdefault(DOMAIN, {})
-
-    if DOMAIN in config:
-        hass.async_create_task(
-            hass.config_entries.flow.async_init(
-                DOMAIN, context={"source": "import"}, data=config[DOMAIN]
-            )
-        )
-
     return True
 
 
