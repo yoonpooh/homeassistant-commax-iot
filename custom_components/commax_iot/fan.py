@@ -81,7 +81,6 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             name=self._nickname,
             manufacturer="Commax",
             model=device_data.get("rootDevice", "Fan"),
-            via_device=(DOMAIN, self._root_uuid),
         )
 
     @property

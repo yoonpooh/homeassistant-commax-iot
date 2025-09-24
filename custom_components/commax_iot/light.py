@@ -2,7 +2,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from homeassistant.components.light import LightEntity, PLATFORM_SCHEMA
+from homeassistant.components.light import LightEntity, PLATFORM_SCHEMA, ColorMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
@@ -12,6 +12,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DEVICE_OFF,
     DEVICE_ON,
+    DEVICE_VALUE_OFF,
+    DEVICE_VALUE_ON,
     DEVICE_TYPE_LIGHT,
     DOMAIN,
     NAME,
@@ -81,12 +83,13 @@ class CommaxLight(CoordinatorEntity, LightEntity):
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_light"
         self._attr_name = self._nickname
+        self._attr_supported_color_modes = {ColorMode.ONOFF}
+        self._attr_color_mode = ColorMode.ONOFF
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._root_uuid)},
             name=self._nickname,
             manufacturer="Commax",
             model=device_data.get("rootDevice", "Light"),
-            via_device=(DOMAIN, self._root_uuid),
         )
 
     @property
@@ -103,7 +106,8 @@ class CommaxLight(CoordinatorEntity, LightEntity):
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
                 current_value = subdevice.get("value")
-                is_on = current_value == DEVICE_ON
+                # API에서 "on"/"off" 문자열로 반환하므로 이를 처리
+                is_on = current_value == DEVICE_VALUE_ON
                 _LOGGER.debug(f"조명 상태 확인 - {self._nickname}: value={current_value}, is_on={is_on}")
                 return is_on
 

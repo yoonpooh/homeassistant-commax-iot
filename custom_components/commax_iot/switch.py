@@ -89,7 +89,6 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             name=self._nickname,
             manufacturer="Commax",
             model=device_data.get("rootDevice", "Switch"),
-            via_device=(DOMAIN, self._root_uuid),
         )
 
     @property

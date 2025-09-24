@@ -41,6 +41,10 @@ SUBDEVICE_FAN_MODE = "fanMode"
 DEVICE_OFF = "0"
 DEVICE_ON = "1"
 
+# 실제 API에서 반환되는 값들 (로그 확인 결과)
+DEVICE_VALUE_OFF = "off"
+DEVICE_VALUE_ON = "on"
+
 # 환기시스템 모드
 FAN_MODE_BYPASS = "0"
 FAN_MODE_MANUAL = "1"

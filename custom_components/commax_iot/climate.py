@@ -85,7 +85,6 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             name=self._nickname,
             manufacturer="Commax",
             model=device_data.get("rootDevice", "Thermostat"),
-            via_device=(DOMAIN, self._root_uuid),
         )
 
         self._attr_min_temp = 5.0
