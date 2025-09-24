@@ -9,7 +9,7 @@ from homeassistant.components.climate import (
     PLATFORM_SCHEMA,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -76,7 +76,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_climate"
         self._attr_name = self._nickname
-        self._attr_temperature_unit = TEMP_CELSIUS
+        self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         self._attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
         self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
