@@ -1,8 +1,8 @@
 """Commax IoT 환기시스템 플랫폼"""
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
-from homeassistant.components.fan import FanEntity, PLATFORM_SCHEMA
+from homeassistant.components.fan import FanEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
@@ -15,7 +15,6 @@ from .const import (
     FAN_MODE_AUTO,
     FAN_MODE_BYPASS,
     FAN_MODE_MANUAL,
-    NAME,
     SUBDEVICE_FAN_MODE,
 )
 
@@ -50,9 +49,17 @@ async def async_setup_entry(
             and device_data.get("rootDevice") == "switch"
         ):
             entities.append(CommaxFan(coordinator, auth_manager, device_data))
+            _LOGGER.debug(
+                "환기시스템 디바이스 등록: %s (UUID: %s)",
+                device_data.get("nickname"),
+                device_data.get("rootUuid"),
+            )
 
     if entities:
+        _LOGGER.info("총 %d개의 환기시스템 디바이스 등록됨", len(entities))
         async_add_entities(entities, True)
+    else:
+        _LOGGER.debug("등록할 환기시스템 디바이스가 없습니다")
 
 
 class CommaxFan(CoordinatorEntity, FanEntity):
@@ -117,12 +124,12 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """환기시스템 켜기 (manual 모드로 설정)"""
-        _LOGGER.warning(f"홈어시스턴트에서 환기시스템 켜기 요청: {self._nickname}")
+        _LOGGER.debug("환기시스템 켜기 요청: %s", self._nickname)
         await self.async_set_preset_mode("manual")
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """환기시스템 끄기 (bypass 모드로 설정)"""
-        _LOGGER.warning(f"홈어시스턴트에서 환기시스템 끄기 요청: {self._nickname}")
+        _LOGGER.debug("환기시스템 끄기 요청: %s", self._nickname)
         await self.async_set_preset_mode("bypass")
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
@@ -137,23 +144,18 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             return
 
         mode_value = REVERSE_FAN_MODE_MAPPING[preset_mode]
-        _LOGGER.warning(f"홈어시스턴트에서 환기 모드 설정 요청: {self._nickname} -> {preset_mode} (값: {mode_value})")
+        _LOGGER.debug(
+            "환기시스템 모드 설정 요청: %s -> %s (값: %s)",
+            self._nickname,
+            preset_mode,
+            mode_value,
+        )
         await self._send_command(mode_value)
 
     async def _send_command(self, mode_value: str) -> None:
         """디바이스 제어 명령 전송"""
-        _LOGGER.warning(f"=== 환기시스템 제어 시작 - {self._nickname} ===")
-        _LOGGER.warning(f"요청된 모드 값: {mode_value}")
-        _LOGGER.warning(f"현재 환기 모드: {self._get_current_fan_mode()}")
-        _LOGGER.warning(f"현재 프리셋 모드: {self.preset_mode}")
-        _LOGGER.warning(f"루트 UUID: {self._root_uuid}")
-        _LOGGER.warning(f"환기 서브디바이스 UUID: {self._fan_subdevice.get('subUuid')}")
-        
-        # FAN_MODE_MAPPING 정보 로깅
-        _LOGGER.warning(f"환기 모드 매핑:")
-        for k, v in FAN_MODE_MAPPING.items():
-            _LOGGER.warning(f"  {k} -> {v}")
-        
+        _LOGGER.debug("환기시스템 제어 요청: %s -> %s", self._nickname, mode_value)
+
         device_data = {
             "subDevice": [
                 {
@@ -169,18 +171,18 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        _LOGGER.warning(f"전송할 환기 명령 데이터: {device_data}")
+        _LOGGER.debug("전송할 환기 명령 데이터: %s", device_data)
         success = await self._auth_manager.send_device_command(device_data)
-        
+
         if success:
-            _LOGGER.warning(f"✅ 환기시스템 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
-            _LOGGER.warning(f"환기시스템 상태 업데이트 요청 완료 - {self._nickname}")
         else:
-            _LOGGER.error(f"❌ 환기시스템 제어 실패 - {self._nickname}: mode_value={mode_value}")
+            _LOGGER.error(
+                "환기시스템 제어 실패: %s (mode_value=%s)",
+                self._nickname,
+                mode_value,
+            )
             await self.coordinator.async_request_refresh()
-            
-        _LOGGER.warning(f"=== 환기시스템 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:

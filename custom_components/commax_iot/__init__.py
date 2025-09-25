@@ -1,5 +1,4 @@
 """Commax IoT 통합 구성요소"""
-import asyncio
 import logging
 from datetime import timedelta
 
@@ -92,11 +91,11 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """데이터 업데이트"""
         try:
-            _LOGGER.warning("=== 디바이스 상태 업데이트 시작 ===")
+            _LOGGER.debug("Commax IoT 디바이스 상태 업데이트 요청")
             devices = await self.auth_manager.get_device_list()
 
             if not devices:
-                _LOGGER.warning("디바이스 목록이 비어있습니다")
+                _LOGGER.info("Commax IoT 디바이스 목록이 비어있습니다")
                 return self._devices or {}
 
             device_data = {}
@@ -104,33 +103,29 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
 
             for device in devices:
                 root_uuid = device.get("rootUuid")
-                if root_uuid:
-                    device_data[root_uuid] = device
-                    device_type = device.get("commaxDevice", "unknown")
-                    if device_type in device_count:
-                        device_count[device_type] += 1
-                    
-                    # 모든 제어 가능한 디바이스의 상세 정보 로깅
-                    if device_type in ["light", "boiler", "standbyPowerSwitch", "fanSystem"]:
-                        _LOGGER.debug(f"{device_type} 디바이스 업데이트: {device.get('nickname')}")
-                        _LOGGER.debug(f"  rootDevice: {device.get('rootDevice')}")
-                        _LOGGER.debug(f"  commaxDevice: {device.get('commaxDevice')}")
-                        for idx, subdev in enumerate(device.get('subDevice', [])):
-                            if subdev.get('type') == 'readWrite':  # 제어 가능한 서브디바이스만 로깅
-                                _LOGGER.debug(f"  제어가능 서브디바이스[{idx}]: UUID={subdev.get('subUuid')}, 타입={subdev.get('sort')}, 값={subdev.get('value')}, 권한={subdev.get('type')}")
+                if not root_uuid:
+                    continue
+
+                device_data[root_uuid] = device
+                device_type = device.get("commaxDevice", "unknown")
+                if device_type in device_count:
+                    device_count[device_type] += 1
+
+                if device_type in ["light", "boiler", "standbyPowerSwitch", "fanSystem"]:
+                    _LOGGER.debug(
+                        "업데이트된 제어 디바이스 %s (%s)",
+                        device.get("nickname"),
+                        device_type,
+                    )
 
             self._devices = device_data
-            _LOGGER.warning(f"디바이스 상태 업데이트 완료: {device_count}")
-            _LOGGER.warning("=== 디바이스 상태 업데이트 완료 ===")
+            _LOGGER.debug("Commax IoT 디바이스 상태 업데이트 완료: %s", device_count)
             return device_data
 
         except Exception as err:
-            _LOGGER.error(f"데이터 업데이트 중 오류: {type(err).__name__}: {err}")
-            import traceback
-            _LOGGER.error(f"Stack trace: {traceback.format_exc()}")
-            # 기존 데이터가 있으면 유지, 없으면 빈 딕셔너리 반환
+            _LOGGER.exception("Commax IoT 디바이스 업데이트 중 오류 발생")
             if self._devices:
-                _LOGGER.warning("기존 디바이스 데이터를 유지합니다")
+                _LOGGER.debug("오류 발생으로 이전 디바이스 데이터를 유지합니다")
                 return self._devices
             raise UpdateFailed(f"데이터 업데이트 실패: {err}") from err
 
