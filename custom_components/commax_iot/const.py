@@ -35,7 +35,7 @@ SUBDEVICE_SWITCH_BINARY = "switchBinary"
 SUBDEVICE_AIR_TEMPERATURE = "airTemperature"
 SUBDEVICE_THERMOSTAT_MODE = "thermostatMode"
 SUBDEVICE_THERMOSTAT_SETPOINT = "thermostatSetpoint"
-SUBDEVICE_FAN_MODE = "fanMode"
+SUBDEVICE_FAN_MODE = "modeBinary"
 
 # 디바이스 값
 DEVICE_OFF = "off"
@@ -46,9 +46,10 @@ DEVICE_VALUE_OFF = "off"
 DEVICE_VALUE_ON = "on"
 
 # 환기시스템 모드
-FAN_MODE_BYPASS = "0"
-FAN_MODE_MANUAL = "1"
-FAN_MODE_AUTO = "2"
+FAN_MODE_BYPASS = "bypass"
+FAN_MODE_MANUAL = "manual"
+FAN_MODE_AUTO = "auto"
+FAN_DEFAULT_MODE = FAN_MODE_AUTO
 
 # API 응답 코드
 API_SUCCESS_CODE = "E0000"
@@ -57,4 +58,4 @@ API_SUCCESS_CODE = "E0000"
 TOKEN_EXPIRE_BUFFER = 1800  # 30분
 
 # 플랫폼 목록
-PLATFORMS = ["light", "climate", "switch"]
+PLATFORMS = ["light", "climate", "switch", "fan"]
