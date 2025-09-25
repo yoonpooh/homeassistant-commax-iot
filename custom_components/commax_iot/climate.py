@@ -1,5 +1,6 @@
 """Commax IoT 보일러 플랫폼"""
 import logging
+from copy import deepcopy
 from typing import Any, Optional
 
 from homeassistant.components.climate import (
@@ -16,7 +17,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DEVICE_OFF,
-    DEVICE_ON,
     DEVICE_TYPE_BOILER,
     DOMAIN,
     SUBDEVICE_AIR_TEMPERATURE,
@@ -147,7 +147,11 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
 
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._mode_subdevice.get("subUuid"):
-                return HVACMode.HEAT if subdevice.get("value") == DEVICE_ON else HVACMode.OFF
+                return (
+                    HVACMode.HEAT
+                    if str(subdevice.get("value", "")).lower() == "heat"
+                    else HVACMode.OFF
+                )
 
         return HVACMode.OFF
 
@@ -176,7 +180,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             _LOGGER.error(f"HVAC 모드 설정 불가 - mode_subdevice가 없음: {self._nickname}")
             return
 
-        value = DEVICE_ON if hvac_mode == HVACMode.HEAT else DEVICE_OFF
+        value = "heat" if hvac_mode == HVACMode.HEAT else DEVICE_OFF
         _LOGGER.debug(
             "보일러 모드 설정 요청: %s -> %s (값: %s)",
             self._nickname,
@@ -189,20 +193,11 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         """온도 설정 명령 전송"""
         _LOGGER.debug("보일러 온도 제어 요청: %s -> %s°C", self._nickname, temperature)
 
-        device_data = {
-            "subDevice": [
-                {
-                    "value": temperature,
-                    "funcCommand": "set",
-                    "type": "readWrite",
-                    "subUuid": self._setpoint_subdevice.get("subUuid"),
-                    "sort": SUBDEVICE_THERMOSTAT_SETPOINT,
-                }
-            ],
-            "rootUuid": self._root_uuid,
-            "nickname": self._nickname,
-            "rootDevice": self._device_data.get("rootDevice"),
-        }
+        device_data = self._prepare_device_command(
+            self._setpoint_subdevice, SUBDEVICE_THERMOSTAT_SETPOINT, temperature
+        )
+        if device_data is None:
+            return
 
         _LOGGER.debug("전송할 온도 명령 데이터: %s", device_data)
         success = await self._auth_manager.send_device_command(device_data)
@@ -228,25 +223,16 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         
         # 대안 값들 준비
         alternative_values = []
-        if mode_value == DEVICE_ON:
-            alternative_values = ["on", "true", "True", "1", "ON"]
+        if mode_value == "heat":
+            alternative_values = ["HEAT", "Heat"]
         elif mode_value == DEVICE_OFF:
-            alternative_values = ["off", "false", "False", "0", "OFF"]
-        
-        device_data = {
-            "subDevice": [
-                {
-                    "value": mode_value,
-                    "funcCommand": "set",
-                    "type": "readWrite",
-                    "subUuid": self._mode_subdevice.get("subUuid"),
-                    "sort": SUBDEVICE_THERMOSTAT_MODE,
-                }
-            ],
-            "rootUuid": self._root_uuid,
-            "nickname": self._nickname,
-            "rootDevice": self._device_data.get("rootDevice"),
-        }
+            alternative_values = ["OFF", "Off"]
+
+        device_data = self._prepare_device_command(
+            self._mode_subdevice, SUBDEVICE_THERMOSTAT_MODE, mode_value
+        )
+        if device_data is None:
+            return
 
         _LOGGER.debug("전송할 모드 명령 데이터: %s", device_data)
         success = await self._auth_manager.send_device_command(device_data)
@@ -256,8 +242,12 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             _LOGGER.debug("기본 모드 값 '%s' 실패, 대안 값 시도", mode_value)
             for alt_value in alternative_values:
                 _LOGGER.debug("대안 모드 값 시도: '%s'", alt_value)
-                device_data["subDevice"][0]["value"] = alt_value
-                success = await self._auth_manager.send_device_command(device_data)
+                updated_data = self._prepare_device_command(
+                    self._mode_subdevice, SUBDEVICE_THERMOSTAT_MODE, alt_value
+                )
+                if updated_data is None:
+                    break
+                success = await self._auth_manager.send_device_command(updated_data)
                 if success:
                     _LOGGER.debug("대안 모드 값 '%s' 성공", alt_value)
                     break
@@ -277,3 +267,46 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
     def _handle_coordinator_update(self) -> None:
         """코디네이터 업데이트 처리"""
         self.async_write_ha_state()
+
+    def _prepare_device_command(self, subdevice: dict, sort: str, value: str) -> Optional[dict]:
+        """현재 디바이스 정보를 기반으로 명령 데이터를 준비"""
+        if not subdevice:
+            _LOGGER.error(
+                "명령 준비 실패 - 대상 서브디바이스가 없음: %s (%s)",
+                self._nickname,
+                sort,
+            )
+            return None
+
+        current_device = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if not current_device:
+            _LOGGER.error(
+                "명령 준비 실패 - 디바이스 데이터를 찾을 수 없음: %s", self._nickname
+            )
+            return None
+
+        device_payload = deepcopy(current_device)
+
+        subdevice_found = False
+        for sub in device_payload.get("subDevice", []):
+            if sub.get("subUuid") == subdevice.get("subUuid"):
+                sub["value"] = value
+                sub["funcCommand"] = "set"
+                sub["sort"] = sort
+                if sub.get("type") != "readWrite":
+                    sub["type"] = "readWrite"
+                subdevice_found = True
+            elif sub.get("type") == "readWrite":
+                # API는 전체 객체가 필요하므로 읽기/쓰기가 가능한 서브디바이스에 대해
+                # funcCommand 값을 유지하도록 보장한다.
+                sub.setdefault("funcCommand", "set")
+
+        if not subdevice_found:
+            _LOGGER.error(
+                "명령 준비 실패 - 대상 서브디바이스를 찾을 수 없음: %s (%s)",
+                self._nickname,
+                sort,
+            )
+            return None
+
+        return device_payload
