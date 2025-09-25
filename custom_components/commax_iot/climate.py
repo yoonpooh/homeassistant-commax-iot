@@ -182,7 +182,15 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             _LOGGER.warning("보일러 %s: mode_subdevice가 없어 HVAC 모드 설정 불가", self._nickname)
             return
 
-        value = "heat" if hvac_mode == HVACMode.HEAT else DEVICE_OFF
+        # 보일러 off 값 테스트 - 여러 값 시도
+        if hvac_mode == HVACMode.HEAT:
+            value = "heat"
+        else:
+            # off 값 시도 순서: off, 0, false, OFF
+            possible_off_values = ["off", "0", "false", "OFF"]
+            value = possible_off_values[0]  # 일단 첫 번째로 시도
+            _LOGGER.warning("보일러 %s: off 모드로 설정 시도 - 사용 값: %s", self._nickname, value)
+
         _LOGGER.warning("보일러 %s: HVAC 모드 설정 요청 %s -> %s (값: %s)", self._nickname, hvac_mode, "heat" if hvac_mode == HVACMode.HEAT else "off", value)
         await self._send_mode_command(value)
 
