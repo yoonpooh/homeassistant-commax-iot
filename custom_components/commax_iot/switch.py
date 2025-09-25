@@ -1,8 +1,8 @@
 """Commax IoT 스위치 플랫폼"""
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from homeassistant.components.switch import SwitchEntity, PLATFORM_SCHEMA
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
@@ -14,7 +14,6 @@ from .const import (
     DEVICE_ON,
     DEVICE_TYPE_SWITCH,
     DOMAIN,
-    NAME,
     SUBDEVICE_SWITCH_BINARY,
 )
 
@@ -38,7 +37,6 @@ async def async_setup_entry(
 
     # 데이터가 여전히 없으면 빈 리스트로 초기화
     if not coordinator.data:
-        _LOGGER.warning("디바이스 데이터를 가져올 수 없어 스위치 엔터티를 생성할 수 없습니다")
         coordinator.data = {}
 
     for device_uuid, device_data in coordinator.data.items():
@@ -56,11 +54,18 @@ async def async_setup_entry(
 
             if has_switch:
                 entities.append(CommaxSwitch(coordinator, auth_manager, device_data))
-                _LOGGER.info(f"스위치 디바이스 등록: {device_data.get('nickname')}")
+                _LOGGER.debug(
+                    "스위치 디바이스 등록: %s (UUID: %s)",
+                    device_data.get("nickname"),
+                    device_data.get("rootUuid"),
+                )
             else:
-                _LOGGER.warning(f"스위치 디바이스에 제어 가능한 스위치가 없음: {device_data.get('nickname')}")
+                _LOGGER.debug(
+                    "스위치 디바이스에 제어 가능한 서브디바이스가 없습니다: %s",
+                    device_data.get("nickname"),
+                )
 
-    _LOGGER.info(f"총 {len(entities)}개의 스위치 디바이스 등록됨")
+    _LOGGER.info("총 %d개의 스위치 디바이스 등록됨", len(entities))
     if entities:
         async_add_entities(entities, True)
 
@@ -131,8 +136,7 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         if not self._switch_subdevice:
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
-
-        _LOGGER.warning(f"홈어시스턴트에서 스위치 켜기 요청: {self._nickname}")
+        _LOGGER.debug("스위치 켜기 요청: %s", self._nickname)
         await self._send_command(DEVICE_ON)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -141,16 +145,16 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
             return
 
-        _LOGGER.warning(f"홈어시스턴트에서 스위치 끄기 요청: {self._nickname}")
+        _LOGGER.debug("스위치 끄기 요청: %s", self._nickname)
         await self._send_command(DEVICE_OFF)
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
-        _LOGGER.warning(f"=== 스위치 제어 시작 - {self._nickname} ===")
-        _LOGGER.warning(f"요청된 동작: {value} ({'켜기' if value == DEVICE_ON else '끄기'})")
-        _LOGGER.warning(f"현재 상태: {'켜짐' if self.is_on else '꺼짐'}")
-        _LOGGER.warning(f"루트 UUID: {self._root_uuid}")
-        _LOGGER.warning(f"스위치 서브디바이스 UUID: {self._switch_subdevice.get('subUuid')}")
+        _LOGGER.debug(
+            "스위치 제어 요청: %s -> %s",
+            self._nickname,
+            value,
+        )
         
         # 대안 값들 준비
         alternative_values = []
@@ -174,31 +178,27 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        _LOGGER.warning(f"전송할 스위치 명령 데이터: {device_data}")
+        _LOGGER.debug("전송할 스위치 명령 데이터: %s", device_data)
         success = await self._auth_manager.send_device_command(device_data)
-        
+
         # 첫 번째 시도가 실패한 경우 대안 값들 시도
         if not success and alternative_values:
-            _LOGGER.warning(f"기본 값 '{value}' 실패, 대안 값들 시도 중...")
+            _LOGGER.debug("기본 값 '%s' 실패, 대안 값 시도", value)
             for alt_value in alternative_values:
-                _LOGGER.info(f"대안 값 시도: '{alt_value}'")
+                _LOGGER.debug("대안 값 시도: '%s'", alt_value)
                 device_data["subDevice"][0]["value"] = alt_value
                 success = await self._auth_manager.send_device_command(device_data)
                 if success:
-                    _LOGGER.info(f"✅ 대안 값 '{alt_value}' 성공!")
+                    _LOGGER.debug("대안 값 '%s' 성공", alt_value)
                     break
                 else:
-                    _LOGGER.warning(f"❌ 대안 값 '{alt_value}' 실패")
-        
+                    _LOGGER.debug("대안 값 '%s' 실패", alt_value)
+
         if success:
-            _LOGGER.warning(f"✅ 스위치 제어 API 호출 성공 - {self._nickname}")
             await self.coordinator.async_request_refresh()
-            _LOGGER.warning(f"스위치 상태 업데이트 요청 완료 - {self._nickname}")
         else:
-            _LOGGER.error(f"❌ 스위치 제어 실패 - {self._nickname}: value={value}")
+            _LOGGER.error("스위치 제어 실패: %s (value=%s)", self._nickname, value)
             await self.coordinator.async_request_refresh()
-            
-        _LOGGER.warning(f"=== 스위치 제어 완료 - {self._nickname} ===")
 
     @callback
     def _handle_coordinator_update(self) -> None:
