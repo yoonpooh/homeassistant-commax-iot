@@ -1,4 +1,5 @@
 """Commax IoT 스위치 플랫폼"""
+import asyncio
 import logging
 from typing import Any
 
@@ -162,10 +163,31 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
                     break
 
         if success:
-            await self.coordinator.async_request_refresh()
-        else:
-            _LOGGER.error("스위치 제어 실패: %s (value=%s)", self._nickname, value)
-            await self.coordinator.async_request_refresh()
+            self._update_local_subdevice_value(
+                self._switch_subdevice.get("subUuid"), value
+            )
+            self.async_write_ha_state()
+
+        asyncio.create_task(self._delayed_refresh())
+
+    async def _delayed_refresh(self) -> None:
+        """1초 후 상태 새로고침"""
+        await asyncio.sleep(1)
+        await self.coordinator.async_request_refresh()
+
+    def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
+        """로컬 서브디바이스 값을 즉시 업데이트"""
+        if not sub_uuid:
+            return
+
+        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if not device_data:
+            return
+
+        for subdevice in device_data.get("subDevice", []):
+            if subdevice.get("subUuid") == sub_uuid:
+                subdevice["value"] = value
+                break
 
     @callback
     def _handle_coordinator_update(self) -> None:

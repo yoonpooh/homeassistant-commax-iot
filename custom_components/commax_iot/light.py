@@ -147,8 +147,8 @@ class CommaxLight(CoordinatorEntity, LightEntity):
 
 
     async def _delayed_refresh(self) -> None:
-        """2초 후 상태 새로고침"""
-        await asyncio.sleep(2)
+        """1초 후 상태 새로고침"""
+        await asyncio.sleep(1)
         await self.coordinator.async_request_refresh()
 
     def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
