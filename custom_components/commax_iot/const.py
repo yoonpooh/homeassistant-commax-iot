@@ -54,8 +54,9 @@ FAN_DEFAULT_MODE = FAN_MODE_AUTO
 # API 응답 코드
 API_SUCCESS_CODE = "E0000"
 
-# 토큰 만료 시간 (초)
-TOKEN_EXPIRE_BUFFER = 1800  # 30분
+# 토큰 만료 관련 설정 (초)
+DEFAULT_TOKEN_EXPIRE = 259200  # 기본 만료 3일
+TOKEN_EXPIRE_BUFFER = 60  # 만료 1분 전 재인증 시도
 
 # 플랫폼 목록
 PLATFORMS = ["light", "climate", "switch", "fan"]

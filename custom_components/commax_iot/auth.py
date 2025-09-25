@@ -14,6 +14,7 @@ from .const import (
     DEFAULT_CLIENT_ID,
     DEFAULT_GRANT_TYPE,
     DEFAULT_OS_CODE,
+    DEFAULT_TOKEN_EXPIRE,
     DEVICE_LIST_URL,
     TOKEN_EXPIRE_BUFFER,
 )
@@ -75,10 +76,20 @@ class CommaxAuthManager:
 
             self._access_token = result.get("accessToken")
             self._refresh_token = result.get("refreshToken")
-            expire_in = result.get("expireIn", 3600)
+            expire_raw = result.get("expireIn") or result.get("expire_in")
+            try:
+                expire_in = int(expire_raw)
+            except (TypeError, ValueError):
+                expire_in = DEFAULT_TOKEN_EXPIRE
+
+            if expire_in <= TOKEN_EXPIRE_BUFFER:
+                # 토큰 만료 시간이 짧을 경우 즉시 만료되지 않도록 최소 여유시간 확보
+                expire_in = TOKEN_EXPIRE_BUFFER + 5
+
             self._token_expires_at = int(time.time()) + expire_in
             self._authenticated = True
 
+            _LOGGER.debug("Commax 토큰 만료 예정: %s초 후", expire_in)
             return True
 
         except Exception:
