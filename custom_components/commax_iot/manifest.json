@@ -9,5 +9,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/yoonpooh/homeassistant-commax-iot/issues",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "1.0.0"
+  "version": "1.0.1",
+  "icon": "custom_components/commax_iot/icons/icon.png",
+  "logo": "custom_components/commax_iot/icons/logo.png"
 }
