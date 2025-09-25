@@ -1,5 +1,6 @@
 """Commax IoT 환기시스템 플랫폼"""
 import asyncio
+import math
 import logging
 from typing import Any, Optional
 
@@ -17,6 +18,7 @@ from .const import (
     DOMAIN,
     FAN_DEFAULT_MODE,
     SUBDEVICE_FAN_MODE,
+    SUBDEVICE_FAN_SPEED,
     SUBDEVICE_SWITCH_BINARY,
 )
 
@@ -81,6 +83,8 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         self._switch_subdevice = None
         self._mode_subdevice = None
+        self._speed_subdevice = None
+        self._speed_options: list[str] = []
         for subdevice in device_data.get("subDevice", []):
             if (
                 subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY
@@ -92,10 +96,26 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                 and subdevice.get("type") == "readWrite"
             ):
                 self._mode_subdevice = subdevice
+            elif (
+                subdevice.get("sort") == SUBDEVICE_FAN_SPEED
+                and subdevice.get("type") == "readWrite"
+            ):
+                self._speed_subdevice = subdevice
+                options = subdevice.get("subOption")
+                if isinstance(options, list) and options:
+                    self._speed_options = [str(option) for option in options if option]
+                elif subdevice.get("value"):
+                    self._speed_options = [str(subdevice.get("value"))]
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_fan"
         self._attr_name = self._nickname
-        self._attr_supported_features = FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
+        features = FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
+        if self._speed_subdevice and self._speed_options:
+            features |= FanEntityFeature.SET_SPEED
+            self._attr_speed_count = len(self._speed_options)
+        else:
+            self._attr_speed_count = None
+        self._attr_supported_features = features
         self._attr_preset_modes = None
 
         self._attr_device_info = DeviceInfo(
@@ -115,6 +135,25 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         """현재 프리셋 모드 반환"""
         mode = self._get_current_mode()
         return mode
+
+    @property
+    def percentage(self) -> Optional[int]:
+        """현재 환기 속도를 백분율로 반환"""
+        if not self._speed_subdevice or not self._speed_options:
+            return None
+
+        if not self.is_on:
+            return 0
+
+        current_speed = self._get_current_speed()
+        if not current_speed:
+            return 0
+
+        percentage = self._speed_to_percentage(current_speed)
+        if percentage is None:
+            return 0
+
+        return percentage
 
     @property
     def available(self) -> bool:
@@ -137,6 +176,14 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         return str(value)
 
+    def _get_current_speed(self) -> Optional[str]:
+        """현재 환기 속도 반환"""
+        value = self._get_subdevice_value(self._speed_subdevice)
+        if value is None:
+            return None
+
+        return str(value)
+
     def _get_subdevice_value(self, subdevice: Optional[dict]) -> Optional[str]:
         """서브 디바이스 현재 값 조회"""
         if not subdevice:
@@ -153,6 +200,30 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         return subdevice.get("value")
 
+    def _speed_to_percentage(self, speed: str) -> Optional[int]:
+        """환기 속도를 백분율로 변환"""
+        if not self._speed_options:
+            return None
+
+        try:
+            index = self._speed_options.index(speed)
+        except ValueError:
+            return None
+
+        step = 100 / len(self._speed_options)
+        percentage = round((index + 1) * step)
+        return max(1, min(100, percentage))
+
+    def _percentage_to_speed(self, percentage: int) -> Optional[str]:
+        """백분율을 환기 속도로 변환"""
+        if not self._speed_options or percentage <= 0:
+            return None
+
+        step = 100 / len(self._speed_options)
+        index = math.ceil(percentage / step) - 1
+        index = max(0, min(index, len(self._speed_options) - 1))
+        return self._speed_options[index]
+
     async def async_turn_on(
         self,
         percentage: Optional[int] = None,
@@ -162,6 +233,10 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         """환기시스템 켜기 및 자동 모드 적용"""
         if not self._switch_subdevice:
             _LOGGER.error("환기 전원 서브디바이스를 찾을 수 없습니다: %s", self._nickname)
+            return
+
+        if percentage is not None and percentage <= 0:
+            await self.async_turn_off()
             return
 
         _LOGGER.debug("환기시스템 켜기 요청: %s", self._nickname)
@@ -177,6 +252,16 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                 )
             payloads.append(self._build_mode_payload(target_mode))
 
+        if self._speed_subdevice and self._speed_options:
+            target_speed = None
+            if percentage is not None:
+                target_speed = self._percentage_to_speed(percentage)
+            if (
+                target_speed
+                and target_speed != self._get_current_speed()
+            ):
+                payloads.append(self._build_speed_payload(target_speed))
+
         await self._send_command(payloads)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -187,6 +272,46 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         _LOGGER.debug("환기시스템 끄기 요청: %s", self._nickname)
         await self._send_command([self._build_switch_payload(DEVICE_OFF)])
+
+    async def async_set_percentage(self, percentage: Optional[int]) -> None:
+        """환기 속도를 백분율 기반으로 설정"""
+        if percentage is None or percentage <= 0:
+            await self.async_turn_off()
+            return
+
+        if not self._speed_subdevice or not self._speed_options:
+            _LOGGER.warning(
+                "환기 속도 제어를 지원하지 않는 디바이스입니다: %s",
+                self._nickname,
+            )
+            await self.async_turn_on()
+            return
+
+        target_speed = self._percentage_to_speed(percentage)
+        if not target_speed:
+            _LOGGER.warning(
+                "지원되지 않는 환기 속도 비율(%s%%)이 요청되었습니다: %s",
+                percentage,
+                self._nickname,
+            )
+            return
+
+        if target_speed == self._get_current_speed() and self.is_on:
+            _LOGGER.debug(
+                "이미 동일한 환기 속도(%s)입니다: %s",
+                target_speed,
+                self._nickname,
+            )
+            return
+
+        payloads = []
+        if not self.is_on:
+            payloads.append(self._build_switch_payload(DEVICE_ON))
+            if self._mode_subdevice:
+                payloads.append(self._build_mode_payload(FAN_DEFAULT_MODE))
+
+        payloads.append(self._build_speed_payload(target_speed))
+        await self._send_command(payloads)
 
     def _build_switch_payload(self, value: str) -> dict:
         return {
@@ -204,6 +329,15 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             "type": "readWrite",
             "subUuid": self._mode_subdevice.get("subUuid"),
             "sort": SUBDEVICE_FAN_MODE,
+        }
+
+    def _build_speed_payload(self, value: str) -> dict:
+        return {
+            "value": value,
+            "funcCommand": "set",
+            "type": "readWrite",
+            "subUuid": self._speed_subdevice.get("subUuid"),
+            "sort": SUBDEVICE_FAN_SPEED,
         }
 
     async def _send_command(self, subdevice_payloads: list[dict]) -> None:

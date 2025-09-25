@@ -2,7 +2,7 @@
 
 DOMAIN = "commax_iot"
 NAME = "COMMAX IoT"
-VERSION = "1.0.0"
+VERSION = "1.0.3"
 
 # API 엔드포인트
 AUTH_URL = "https://gauth-v2.commaxcloud.net/v2/oauth/user/authorize"
@@ -36,6 +36,7 @@ SUBDEVICE_AIR_TEMPERATURE = "airTemperature"
 SUBDEVICE_THERMOSTAT_MODE = "thermostatMode"
 SUBDEVICE_THERMOSTAT_SETPOINT = "thermostatSetpoint"
 SUBDEVICE_FAN_MODE = "modeBinary"
+SUBDEVICE_FAN_SPEED = "fanSpeed"
 
 # 디바이스 값
 DEVICE_OFF = "off"
