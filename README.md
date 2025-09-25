@@ -1,3 +1,5 @@
+![Commax IoT Logo](images/logo.png)
+
 # Commax IoT HomeAssistant 통합 구성요소
 
 Commax IoT 시스템을 HomeAssistant에 연동하기 위한 Custom Integration입니다.
