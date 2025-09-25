@@ -153,7 +153,12 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         return subdevice.get("value")
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(
+        self,
+        percentage: Optional[int] = None,
+        preset_mode: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
         """환기시스템 켜기 및 자동 모드 적용"""
         if not self._switch_subdevice:
             _LOGGER.error("환기 전원 서브디바이스를 찾을 수 없습니다: %s", self._nickname)
@@ -163,7 +168,14 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         payloads = [self._build_switch_payload(DEVICE_ON)]
 
         if self._mode_subdevice:
-            payloads.append(self._build_mode_payload(FAN_DEFAULT_MODE))
+            target_mode = FAN_DEFAULT_MODE
+            if preset_mode and preset_mode != FAN_DEFAULT_MODE:
+                _LOGGER.debug(
+                    "요청된 프리셋 모드(%s)를 무시하고 기본 모드(%s)를 적용합니다",
+                    preset_mode,
+                    FAN_DEFAULT_MODE,
+                )
+            payloads.append(self._build_mode_payload(target_mode))
 
         await self._send_command(payloads)
 
