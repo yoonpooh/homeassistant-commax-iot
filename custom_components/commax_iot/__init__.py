@@ -2,12 +2,9 @@
 import logging
 from datetime import timedelta
 
-import aiohttp
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -25,8 +22,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-# CONFIG_SCHEMA는 config flow 사용 시 필요 없음
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -91,41 +86,22 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """데이터 업데이트"""
         try:
-            _LOGGER.debug("Commax IoT 디바이스 상태 업데이트 요청")
             devices = await self.auth_manager.get_device_list()
 
             if not devices:
-                _LOGGER.info("Commax IoT 디바이스 목록이 비어있습니다")
                 return self._devices or {}
 
             device_data = {}
-            device_count = {"light": 0, "boiler": 0, "switch": 0, "fan": 0}
-
             for device in devices:
                 root_uuid = device.get("rootUuid")
-                if not root_uuid:
-                    continue
-
-                device_data[root_uuid] = device
-                device_type = device.get("commaxDevice", "unknown")
-                if device_type in device_count:
-                    device_count[device_type] += 1
-
-                if device_type in ["light", "boiler", "standbyPowerSwitch", "fanSystem"]:
-                    _LOGGER.debug(
-                        "업데이트된 제어 디바이스 %s (%s)",
-                        device.get("nickname"),
-                        device_type,
-                    )
+                if root_uuid:
+                    device_data[root_uuid] = device
 
             self._devices = device_data
-            _LOGGER.debug("Commax IoT 디바이스 상태 업데이트 완료: %s", device_count)
             return device_data
 
         except Exception as err:
-            _LOGGER.exception("Commax IoT 디바이스 업데이트 중 오류 발생")
             if self._devices:
-                _LOGGER.debug("오류 발생으로 이전 디바이스 데이터를 유지합니다")
                 return self._devices
             raise UpdateFailed(f"데이터 업데이트 실패: {err}") from err
 

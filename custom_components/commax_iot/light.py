@@ -1,4 +1,5 @@
 """Commax IoT 조명 플랫폼"""
+import asyncio
 import logging
 from typing import Any
 
@@ -33,43 +34,26 @@ async def async_setup_entry(
 
     entities = []
 
-    # 데이터가 준비될 때까지 기다림
-    if not coordinator.data:
-        await coordinator.async_refresh()
-
-    # 데이터가 여전히 없으면 빈 리스트로 초기화
-    if not coordinator.data:
-        coordinator.data = {}
+    await coordinator.async_refresh()
 
     for device_uuid, device_data in coordinator.data.items():
         if device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT:
-            # 필수 subDevice 확인
-            has_switch = False
-            for subdevice in device_data.get("subDevice", []):
-                if (subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and
-                    subdevice.get("type") == "readWrite"):
-                    has_switch = True
-                    break
+            has_switch = any(
+                subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and
+                subdevice.get("type") == "readWrite"
+                for subdevice in device_data.get("subDevice", [])
+            )
 
             if has_switch:
-                light_entity = CommaxLight(coordinator, auth_manager, device_data)
-                entities.append(light_entity)
+                entities.append(CommaxLight(coordinator, auth_manager, device_data))
                 _LOGGER.debug(
                     "조명 디바이스 등록: %s (UUID: %s)",
                     device_data.get("nickname"),
                     device_data.get("rootUuid"),
                 )
-            else:
-                _LOGGER.debug(
-                    "조명 디바이스에 제어 가능한 서브디바이스가 없습니다: %s",
-                    device_data.get("nickname"),
-                )
 
     if entities:
-        _LOGGER.info("총 %d개의 조명 디바이스 등록됨", len(entities))
         async_add_entities(entities, True)
-    else:
-        _LOGGER.debug("등록할 조명 디바이스가 없습니다")
 
 class CommaxLight(CoordinatorEntity, LightEntity):
     """Commax IoT 조명 엔터티"""
@@ -82,11 +66,15 @@ class CommaxLight(CoordinatorEntity, LightEntity):
         self._root_uuid = device_data.get("rootUuid")
         self._nickname = device_data.get("nickname", "Commax Light")
 
-        self._switch_subdevice = None
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and subdevice.get("type") == "readWrite":
-                self._switch_subdevice = subdevice
-                break
+        self._switch_subdevice = next(
+            (
+                subdevice
+                for subdevice in device_data.get("subDevice", [])
+                if subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY
+                and subdevice.get("type") == "readWrite"
+            ),
+            None,
+        )
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_light"
         self._attr_name = self._nickname
@@ -103,30 +91,16 @@ class CommaxLight(CoordinatorEntity, LightEntity):
     def is_on(self) -> bool:
         """조명이 켜져 있는지 반환"""
         if not self._switch_subdevice:
-            _LOGGER.debug(f"is_on 체크: 스위치 서브디바이스 없음 - {self._nickname}")
             return False
 
         device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
         if not device_data:
-            _LOGGER.debug(f"is_on 체크: 디바이스 데이터를 찾을 수 없음 - {self._root_uuid}")
             return False
 
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
-                current_value = subdevice.get("value")
-                # 다양한 형식의 "on" 값들 체크
-                possible_on_values = [DEVICE_VALUE_ON, "1", "true", "True", "ON", "on"]
-                is_on = current_value in possible_on_values
-                
-                _LOGGER.debug(f"조명 상태 상세 체크 - {self._nickname}:")
-                _LOGGER.debug(f"  서브디바이스 UUID: {subdevice.get('subUuid')}")
-                _LOGGER.debug(f"  현재 값: '{current_value}' (type: {type(current_value)})")
-                _LOGGER.debug(f"  가능한 ON 값들: {possible_on_values}")
-                _LOGGER.debug(f"  결과: {'ON' if is_on else 'OFF'}")
-                
-                return is_on
+                return subdevice.get("value") == DEVICE_VALUE_ON
 
-        _LOGGER.debug(f"is_on 체크: 서브디바이스를 찾을 수 없음 - UUID: {self._switch_subdevice.get('subUuid')}")
         return False
 
     @property
@@ -136,25 +110,16 @@ class CommaxLight(CoordinatorEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """조명 켜기"""
-        if not self._switch_subdevice:
-            _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
-            return
-
-        await self._send_command(DEVICE_ON)
+        if self._switch_subdevice:
+            await self._send_command(DEVICE_ON)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """조명 끄기"""
-        if not self._switch_subdevice:
-            _LOGGER.error("스위치 서브디바이스를 찾을 수 없습니다")
-            return
-
-        await self._send_command(DEVICE_OFF)
+        if self._switch_subdevice:
+            await self._send_command(DEVICE_OFF)
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
-        if not self._switch_subdevice:
-            _LOGGER.error(f"스위치 서브디바이스가 없어 제어할 수 없음: {self._nickname}")
-            return
         device_data = {
             "subDevice": [
                 {
@@ -169,35 +134,36 @@ class CommaxLight(CoordinatorEntity, LightEntity):
             "nickname": self._nickname,
             "rootDevice": self._device_data.get("rootDevice"),
         }
-        
-        # 전송될 JSON 구조 상세 로깅
 
-        
-        # 중요: 에러 발생 가능성 체크
-        validation_errors = []
-        if not device_data.get('rootUuid'):
-            validation_errors.append("rootUuid 누락")
-        if not device_data.get('subDevice') or len(device_data.get('subDevice', [])) == 0:
-            validation_errors.append("subDevice 누락 또는 비어있음")
-        if not device_data['subDevice'][0].get('subUuid'):
-            validation_errors.append("subDevice UUID 누락")
-
-        if validation_errors:
-            _LOGGER.error("데이터 유효성 검사 실패: %s", ", ".join(validation_errors))
-            return
-
-        _LOGGER.debug("조명 제어 요청: %s -> %s", self._nickname, value)
         success = await self._auth_manager.send_device_command(device_data)
 
-        if not success:
-            _LOGGER.error(
-                "조명 제어 실패: %s (value=%s)",
-                self._nickname,
-                value,
+        if success:
+            self._update_local_subdevice_value(
+                self._switch_subdevice.get("subUuid"), value
             )
+            self.async_write_ha_state()
 
+        asyncio.create_task(self._delayed_refresh())
+
+
+    async def _delayed_refresh(self) -> None:
+        """2초 후 상태 새로고침"""
+        await asyncio.sleep(2)
         await self.coordinator.async_request_refresh()
 
+    def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
+        """로컬 서브디바이스 값을 즉시 업데이트"""
+        if not sub_uuid:
+            return
+
+        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if not device_data:
+            return
+
+        for subdevice in device_data.get("subDevice", []):
+            if subdevice.get("subUuid") == sub_uuid:
+                subdevice["value"] = value
+                break
 
     @callback
     def _handle_coordinator_update(self) -> None:

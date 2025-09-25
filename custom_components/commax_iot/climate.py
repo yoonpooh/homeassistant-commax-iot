@@ -1,4 +1,5 @@
 """Commax IoT 보일러 플랫폼"""
+import asyncio
 import logging
 from copy import deepcopy
 from typing import Any, Optional
@@ -168,7 +169,6 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         """목표 온도 설정"""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None or not self._setpoint_subdevice:
-            _LOGGER.error(f"온도 설정 불가 - temperature: {temperature}, setpoint_subdevice: {self._setpoint_subdevice is not None}")
             return
 
         _LOGGER.debug("보일러 온도 설정 요청: %s -> %s°C", self._nickname, temperature)
@@ -177,91 +177,47 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """HVAC 모드 설정"""
         if not self._mode_subdevice:
-            _LOGGER.error(f"HVAC 모드 설정 불가 - mode_subdevice가 없음: {self._nickname}")
             return
 
         value = "heat" if hvac_mode == HVACMode.HEAT else DEVICE_OFF
-        _LOGGER.debug(
-            "보일러 모드 설정 요청: %s -> %s (값: %s)",
-            self._nickname,
-            hvac_mode,
-            value,
-        )
+        _LOGGER.debug("보일러 모드 설정 요청: %s -> %s", self._nickname, value)
         await self._send_mode_command(value)
 
     async def _send_temperature_command(self, temperature: str) -> None:
         """온도 설정 명령 전송"""
-        _LOGGER.debug("보일러 온도 제어 요청: %s -> %s°C", self._nickname, temperature)
-
         device_data = self._prepare_device_command(
             self._setpoint_subdevice, SUBDEVICE_THERMOSTAT_SETPOINT, temperature
         )
         if device_data is None:
             return
 
-        _LOGGER.debug("전송할 온도 명령 데이터: %s", device_data)
         success = await self._auth_manager.send_device_command(device_data)
-        
-        # 온도 설정에는 대안 값 시도를 하지 않음 (숫자 값이므로)
-        
-        if not success:
-            _LOGGER.error(
-                "보일러 온도 제어 실패: %s (temperature=%s)",
-                self._nickname,
-                temperature,
-            )
 
-        await self.coordinator.async_request_refresh()
+        if success:
+            self._update_local_subdevice_value(
+                self._setpoint_subdevice.get("subUuid"), temperature
+            )
+            self.async_write_ha_state()
+
+        asyncio.create_task(self._delayed_refresh())
 
     async def _send_mode_command(self, mode_value: str) -> None:
         """모드 설정 명령 전송"""
-        _LOGGER.debug(
-            "보일러 모드 제어 요청: %s -> %s",
-            self._nickname,
-            mode_value,
-        )
-        
-        # 대안 값들 준비
-        alternative_values = []
-        if mode_value == "heat":
-            alternative_values = ["HEAT", "Heat"]
-        elif mode_value == DEVICE_OFF:
-            alternative_values = ["OFF", "Off"]
-
         device_data = self._prepare_device_command(
             self._mode_subdevice, SUBDEVICE_THERMOSTAT_MODE, mode_value
         )
         if device_data is None:
             return
 
-        _LOGGER.debug("전송할 모드 명령 데이터: %s", device_data)
         success = await self._auth_manager.send_device_command(device_data)
-        
-        # 첫 번째 시도가 실패한 경우 대안 값들 시도
-        if not success and alternative_values:
-            _LOGGER.debug("기본 모드 값 '%s' 실패, 대안 값 시도", mode_value)
-            for alt_value in alternative_values:
-                _LOGGER.debug("대안 모드 값 시도: '%s'", alt_value)
-                updated_data = self._prepare_device_command(
-                    self._mode_subdevice, SUBDEVICE_THERMOSTAT_MODE, alt_value
-                )
-                if updated_data is None:
-                    break
-                success = await self._auth_manager.send_device_command(updated_data)
-                if success:
-                    _LOGGER.debug("대안 모드 값 '%s' 성공", alt_value)
-                    break
-                else:
-                    _LOGGER.debug("대안 모드 값 '%s' 실패", alt_value)
 
-        if not success:
-            _LOGGER.error(
-                "보일러 모드 제어 실패: %s (mode_value=%s)",
-                self._nickname,
-                mode_value,
+        if success:
+            self._update_local_subdevice_value(
+                self._mode_subdevice.get("subUuid"), mode_value
             )
+            self.async_write_ha_state()
 
-        await self.coordinator.async_request_refresh()
+        asyncio.create_task(self._delayed_refresh())
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -269,44 +225,42 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         self.async_write_ha_state()
 
     def _prepare_device_command(self, subdevice: dict, sort: str, value: str) -> Optional[dict]:
-        """현재 디바이스 정보를 기반으로 명령 데이터를 준비"""
+        """디바이스 명령 데이터 준비"""
         if not subdevice:
-            _LOGGER.error(
-                "명령 준비 실패 - 대상 서브디바이스가 없음: %s (%s)",
-                self._nickname,
-                sort,
-            )
             return None
 
         current_device = self.coordinator.get_device_by_uuid(self._root_uuid)
         if not current_device:
-            _LOGGER.error(
-                "명령 준비 실패 - 디바이스 데이터를 찾을 수 없음: %s", self._nickname
-            )
             return None
 
         device_payload = deepcopy(current_device)
 
-        subdevice_found = False
         for sub in device_payload.get("subDevice", []):
             if sub.get("subUuid") == subdevice.get("subUuid"):
                 sub["value"] = value
                 sub["funcCommand"] = "set"
                 sub["sort"] = sort
-                if sub.get("type") != "readWrite":
-                    sub["type"] = "readWrite"
-                subdevice_found = True
+                sub["type"] = "readWrite"
             elif sub.get("type") == "readWrite":
-                # API는 전체 객체가 필요하므로 읽기/쓰기가 가능한 서브디바이스에 대해
-                # funcCommand 값을 유지하도록 보장한다.
                 sub.setdefault("funcCommand", "set")
 
-        if not subdevice_found:
-            _LOGGER.error(
-                "명령 준비 실패 - 대상 서브디바이스를 찾을 수 없음: %s (%s)",
-                self._nickname,
-                sort,
-            )
-            return None
-
         return device_payload
+
+    async def _delayed_refresh(self) -> None:
+        """2초 후 상태 새로고침"""
+        await asyncio.sleep(2)
+        await self.coordinator.async_request_refresh()
+
+    def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
+        """로컬 서브디바이스 값을 즉시 업데이트"""
+        if not sub_uuid:
+            return
+
+        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if not device_data:
+            return
+
+        for subdevice in device_data.get("subDevice", []):
+            if subdevice.get("subUuid") == sub_uuid:
+                subdevice["value"] = value
+                break
