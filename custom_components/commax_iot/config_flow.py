@@ -65,10 +65,10 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({
                 vol.Optional(CONF_NAME, default=NAME): str,
-                vol.Required(CONF_CLIENT_SECRET): str,
+                vol.Required(CONF_CLIENT_SECRET, description={"type": "password"}): str,
                 vol.Required(CONF_MOBILE_UUID): str,
                 vol.Required(CONF_USER_ID): str,
-                vol.Required(CONF_USER_PASS): str,
+                vol.Required(CONF_USER_PASS, description={"type": "password"}): str,
                 vol.Required(CONF_RESOURCE_NO): str,
                 vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
             }),

@@ -1,7 +1,7 @@
 """Commax IoT 통합 구성요소의 상수 정의"""
 
 DOMAIN = "commax_iot"
-NAME = "Commax IoT"
+NAME = "COMMAX IoT"
 VERSION = "1.0.0"
 
 # API 엔드포인트

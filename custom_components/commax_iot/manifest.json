@@ -1,6 +1,6 @@
 {
   "domain": "commax_iot",
-  "name": "Commax IoT",
+  "name": "COMMAX IoT",
   "codeowners": ["@yoonpooh"],
   "config_flow": true,
   "dependencies": [],
