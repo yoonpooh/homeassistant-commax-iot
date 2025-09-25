@@ -169,21 +169,69 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """목표 온도 설정"""
+        hvac_mode_raw = kwargs.get("hvac_mode")
+        normalized_mode = None
+
+        if hvac_mode_raw is not None:
+            normalized_mode = self._normalize_hvac_mode(hvac_mode_raw)
+            if normalized_mode is None:
+                _LOGGER.warning(
+                    "보일러 %s: 지원하지 않는 HVAC 모드 요청 - %s",
+                    self._nickname,
+                    hvac_mode_raw,
+                )
+            else:
+                await self.async_set_hvac_mode(normalized_mode)
+                if normalized_mode == HVACMode.OFF:
+                    _LOGGER.debug(
+                        "보일러 %s: HVAC OFF 요청과 함께 받은 온도 명령을 무시합니다",
+                        self._nickname,
+                    )
+                    return
+
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None or not self._setpoint_subdevice:
             return
 
-        _LOGGER.debug("보일러 온도 설정 요청: %s -> %s°C", self._nickname, temperature)
+        _LOGGER.debug(
+            "보일러 온도 설정 요청: %s -> %s°C (HVAC 모드: %s)",
+            self._nickname,
+            temperature,
+            normalized_mode or self.hvac_mode,
+        )
         await self._send_temperature_command(str(temperature))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """HVAC 모드 설정"""
+        normalized_mode = self._normalize_hvac_mode(hvac_mode)
+        if normalized_mode is None:
+            _LOGGER.warning(
+                "보일러 %s: 알 수 없는 HVAC 모드 요청 - %s",
+                self._nickname,
+                hvac_mode,
+            )
+            return
+
         if not self._mode_subdevice:
             _LOGGER.warning("보일러 %s: mode_subdevice가 없어 HVAC 모드 설정 불가", self._nickname)
             return
 
-        value = "heat" if hvac_mode == HVACMode.HEAT else DEVICE_OFF
-        _LOGGER.warning("보일러 %s: HVAC 모드 설정 요청 %s -> %s (값: %s)", self._nickname, hvac_mode, "heat" if hvac_mode == HVACMode.HEAT else "off", value)
+        if normalized_mode not in (HVACMode.HEAT, HVACMode.OFF):
+            _LOGGER.warning(
+                "보일러 %s: 지원하지 않는 HVAC 모드 요청 - %s",
+                self._nickname,
+                normalized_mode,
+            )
+            return
+
+        value = "heat" if normalized_mode == HVACMode.HEAT else DEVICE_OFF
+        _LOGGER.warning(
+            "보일러 %s: HVAC 모드 설정 요청 %s -> %s (값: %s)",
+            self._nickname,
+            normalized_mode,
+            "heat" if normalized_mode == HVACMode.HEAT else "off",
+            value,
+        )
         await self._send_mode_command(value)
 
     async def _send_temperature_command(self, temperature: str) -> None:
@@ -289,3 +337,14 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
 
         if not updated:
             _LOGGER.warning("보일러 %s: 대상 서브디바이스 찾을 수 없음 - UUID: %s", self._nickname, sub_uuid)
+
+    def _normalize_hvac_mode(self, hvac_mode: Any) -> Optional[HVACMode]:
+        """HVAC 모드 입력을 표준 Enum으로 변환"""
+        if isinstance(hvac_mode, HVACMode):
+            return hvac_mode
+        if isinstance(hvac_mode, str):
+            try:
+                return HVACMode(hvac_mode.lower())
+            except ValueError:
+                return None
+        return None
