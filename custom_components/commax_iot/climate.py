@@ -193,11 +193,19 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         if temperature is None or not self._setpoint_subdevice:
             return
 
+        effective_mode = normalized_mode or self.hvac_mode
+        if effective_mode == HVACMode.OFF:
+            _LOGGER.debug(
+                "보일러 %s: 현재 HVAC 모드가 OFF라 온도 명령을 생략합니다",
+                self._nickname,
+            )
+            return
+
         _LOGGER.debug(
             "보일러 온도 설정 요청: %s -> %s°C (HVAC 모드: %s)",
             self._nickname,
             temperature,
-            normalized_mode or self.hvac_mode,
+            effective_mode,
         )
         await self._send_temperature_command(str(temperature))
 
@@ -347,4 +355,14 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
                 return HVACMode(hvac_mode.lower())
             except ValueError:
                 return None
+        if isinstance(hvac_mode, (int, float)):
+            try:
+                hvac_int = int(hvac_mode)
+            except (TypeError, ValueError):
+                return None
+            if hvac_int == 0:
+                return HVACMode.OFF
+            if hvac_int == 1:
+                return HVACMode.HEAT
+            return None
         return None

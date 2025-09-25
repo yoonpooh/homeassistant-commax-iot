@@ -5,9 +5,11 @@ from typing import Any
 
 from homeassistant.components.light import LightEntity, ColorMode
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -55,7 +57,7 @@ async def async_setup_entry(
     if entities:
         async_add_entities(entities, True)
 
-class CommaxLight(CoordinatorEntity, LightEntity):
+class CommaxLight(CoordinatorEntity, RestoreEntity, LightEntity):
     """Commax IoT 조명 엔터티"""
 
     def __init__(self, coordinator, auth_manager, device_data):
@@ -80,12 +82,21 @@ class CommaxLight(CoordinatorEntity, LightEntity):
         self._attr_name = self._nickname
         self._attr_supported_color_modes = {ColorMode.ONOFF}
         self._attr_color_mode = ColorMode.ONOFF
+        self._attr_is_on = False
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._root_uuid)},
             name=self._nickname,
             manufacturer="Commax",
             model=device_data.get("rootDevice", "Light"),
         )
+
+    async def async_added_to_hass(self) -> None:
+        """엔터티 추가 시 마지막 상태 복원"""
+        await super().async_added_to_hass()
+
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            self._attr_is_on = last_state.state == STATE_ON
 
     @property
     def is_on(self) -> bool:
@@ -95,13 +106,27 @@ class CommaxLight(CoordinatorEntity, LightEntity):
 
         device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
         if not device_data:
-            return False
+            return self._attr_is_on
 
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
-                return subdevice.get("value") == DEVICE_VALUE_ON
+                current_value = subdevice.get("value")
+                if current_value is None:
+                    return self._attr_is_on
 
-        return False
+                normalized = str(current_value).lower()
+                possible_on_values = {
+                    DEVICE_ON,
+                    DEVICE_VALUE_ON,
+                    DEVICE_VALUE_ON.lower(),
+                    "1",
+                    "true",
+                }
+                is_on = normalized in possible_on_values
+                self._attr_is_on = is_on
+                return is_on
+
+        return self._attr_is_on
 
     @property
     def available(self) -> bool:
@@ -163,6 +188,14 @@ class CommaxLight(CoordinatorEntity, LightEntity):
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == sub_uuid:
                 subdevice["value"] = value
+                normalized = str(value).lower()
+                self._attr_is_on = normalized in {
+                    DEVICE_ON,
+                    DEVICE_VALUE_ON,
+                    DEVICE_VALUE_ON.lower(),
+                    "1",
+                    "true",
+                }
                 break
 
     @callback
