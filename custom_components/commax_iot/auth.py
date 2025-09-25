@@ -143,9 +143,11 @@ class CommaxAuthManager:
 
     async def send_device_command(self, device_data: Dict) -> bool:
         """디바이스 제어 명령 전송"""
+        _LOGGER.warning("API 명령 전송 시작 - device: %s", device_data.get('nickname', 'Unknown'))
+
         token = await self.get_access_token()
         if not token:
-            _LOGGER.error("Commax IoT 액세스 토큰을 가져올 수 없습니다")
+            _LOGGER.warning("API 명령 전송 실패 - 토큰 없음")
             return False
 
         try:
@@ -193,7 +195,13 @@ class CommaxAuthManager:
                 else:
                     result = await response.json()
 
-            return result and result.get("resultCode") == API_SUCCESS_CODE
+            success = result and result.get("resultCode") == API_SUCCESS_CODE
+            _LOGGER.warning("API 응답 결과 - success: %s, resultCode: %s, resultMessage: %s",
+                          success,
+                          result.get("resultCode") if result else "No result",
+                          result.get("resultMessage", "No message") if result else "No result")
+            return success
 
-        except Exception:
+        except Exception as e:
+            _LOGGER.warning("API 명령 전송 예외 발생: %s", str(e))
             return False
