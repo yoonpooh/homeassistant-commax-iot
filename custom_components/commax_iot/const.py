@@ -57,5 +57,4 @@ API_SUCCESS_CODE = "E0000"
 TOKEN_EXPIRE_BUFFER = 1800  # 30분
 
 # 플랫폼 목록
-PLATFORMS = ["light"]
-# "climate", "switch", "fan"]
+PLATFORMS = ["light", "climate"]
