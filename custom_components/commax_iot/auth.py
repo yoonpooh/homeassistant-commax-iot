@@ -65,7 +65,6 @@ class CommaxAuthManager:
                 "clientId": DEFAULT_CLIENT_ID,
             }
 
-
             async with self._session.post(AUTH_URL, json=auth_data) as response:
                 if response.status != 200:
                     return False
@@ -154,7 +153,7 @@ class CommaxAuthManager:
 
     async def send_device_command(self, device_data: Dict) -> bool:
         """디바이스 제어 명령 전송"""
-        _LOGGER.warning("API 명령 전송 시작 - device: %s", device_data.get('nickname', 'Unknown'))
+        _LOGGER.debug("API 명령 전송 시작 - device: %s", device_data.get('nickname', 'Unknown'))
 
         token = await self.get_access_token()
         if not token:
@@ -207,7 +206,7 @@ class CommaxAuthManager:
                     result = await response.json()
 
             success = result and result.get("resultCode") == API_SUCCESS_CODE
-            _LOGGER.warning("API 응답 결과 - success: %s, resultCode: %s, resultMessage: %s",
+            _LOGGER.debug("API 응답 결과 - success: %s, resultCode: %s, resultMessage: %s",
                           success,
                           result.get("resultCode") if result else "No result",
                           result.get("resultMessage", "No message") if result else "No result")

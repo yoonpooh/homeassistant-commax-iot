@@ -1,7 +1,6 @@
 """Commax IoT 보일러 플랫폼"""
 import asyncio
 import logging
-from copy import deepcopy
 from typing import Any, Optional
 
 from homeassistant.components.climate import (
@@ -140,22 +139,22 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
     def hvac_mode(self) -> HVACMode:
         """현재 HVAC 모드 반환"""
         if not self._mode_subdevice:
-            _LOGGER.warning("보일러 %s: mode_subdevice가 없어 OFF 모드 반환", self._nickname)
+            _LOGGER.debug("보일러 %s: mode_subdevice가 없어 OFF 모드 반환", self._nickname)
             return HVACMode.OFF
 
         device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
         if not device_data:
-            _LOGGER.warning("보일러 %s: 디바이스 데이터가 없어 OFF 모드 반환", self._nickname)
+            _LOGGER.debug("보일러 %s: 디바이스 데이터가 없어 OFF 모드 반환", self._nickname)
             return HVACMode.OFF
 
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._mode_subdevice.get("subUuid"):
                 current_value = str(subdevice.get("value", "")).lower()
                 mode = HVACMode.HEAT if current_value == "heat" else HVACMode.OFF
-                _LOGGER.warning("보일러 %s: 현재 모드 값 '%s' -> %s", self._nickname, current_value, mode)
+                _LOGGER.debug("보일러 %s: 현재 모드 값 '%s' -> %s", self._nickname, current_value, mode)
                 return mode
 
-        _LOGGER.warning("보일러 %s: 모드 서브디바이스를 찾을 수 없어 OFF 모드 반환", self._nickname)
+        _LOGGER.debug("보일러 %s: 모드 서브디바이스를 찾을 수 없어 OFF 모드 반환", self._nickname)
         return HVACMode.OFF
 
     @property
@@ -233,7 +232,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             return
 
         value = "heat" if normalized_mode == HVACMode.HEAT else DEVICE_OFF
-        _LOGGER.warning(
+        _LOGGER.debug(
             "보일러 %s: HVAC 모드 설정 요청 %s -> %s (값: %s)",
             self._nickname,
             normalized_mode,
@@ -262,7 +261,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
 
     async def _send_mode_command(self, mode_value: str) -> None:
         """모드 설정 명령 전송"""
-        _LOGGER.warning("보일러 %s: 모드 명령 전송 시작 - 값: %s", self._nickname, mode_value)
+        _LOGGER.debug("보일러 %s: 모드 명령 전송 시작 - 값: %s", self._nickname, mode_value)
 
         device_data = self._prepare_device_command(
             self._mode_subdevice, SUBDEVICE_THERMOSTAT_MODE, mode_value
@@ -271,12 +270,12 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             _LOGGER.warning("보일러 %s: device_data 준비 실패", self._nickname)
             return
 
-        _LOGGER.warning("보일러 %s: API 명령 전송 시작 - device_data: %s", self._nickname, device_data)
+        _LOGGER.debug("보일러 %s: API 명령 전송 시작 - device_data: %s", self._nickname, device_data)
         success = await self._auth_manager.send_device_command(device_data)
-        _LOGGER.warning("보일러 %s: API 명령 결과 - success: %s", self._nickname, success)
+        _LOGGER.debug("보일러 %s: API 명령 결과 - success: %s", self._nickname, success)
 
         if success:
-            _LOGGER.warning("보일러 %s: 명령 성공 - 로컬 상태 업데이트 %s = %s", self._nickname, self._mode_subdevice.get("subUuid"), mode_value)
+            _LOGGER.debug("보일러 %s: 명령 성공 - 로컬 상태 업데이트 %s = %s", self._nickname, self._mode_subdevice.get("subUuid"), mode_value)
             self._update_local_subdevice_value(
                 self._mode_subdevice.get("subUuid"), mode_value
             )
@@ -340,7 +339,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
                 old_value = subdevice.get("value")
                 subdevice["value"] = value
                 updated = True
-                _LOGGER.warning("보일러 %s: 로컬 업데이트 완료 %s: %s -> %s", self._nickname, sub_uuid, old_value, value)
+                _LOGGER.debug("보일러 %s: 로컬 업데이트 완료 %s: %s -> %s", self._nickname, sub_uuid, old_value, value)
                 break
 
         if not updated:

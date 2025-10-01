@@ -72,11 +72,15 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         self._root_uuid = device_data.get("rootUuid")
         self._nickname = device_data.get("nickname", "Commax Switch")
 
-        self._switch_subdevice = None
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and subdevice.get("type") == "readWrite":
-                self._switch_subdevice = subdevice
-                break
+        self._switch_subdevice = next(
+            (
+                subdevice
+                for subdevice in device_data.get("subDevice", [])
+                if subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY
+                and subdevice.get("type") == "readWrite"
+            ),
+            None,
+        )
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_switch"
         self._attr_name = self._nickname
@@ -100,8 +104,10 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         for subdevice in device_data.get("subDevice", []):
             if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
                 current_value = subdevice.get("value")
-                possible_on_values = [DEVICE_ON, "1", "true", "True", "ON", "on"]
-                return current_value in possible_on_values
+                if current_value is None:
+                    return False
+                normalized = str(current_value).lower()
+                return normalized in {DEVICE_ON, "1", "true"}
 
         return False
 
@@ -132,12 +138,6 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
-        alternative_values = []
-        if value == DEVICE_ON:
-            alternative_values = ["on", "true", "True", "1", "ON"]
-        elif value == DEVICE_OFF:
-            alternative_values = ["off", "false", "False", "0", "OFF"]
-
         device_data = {
             "subDevice": [
                 {
@@ -154,13 +154,6 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         }
 
         success = await self._auth_manager.send_device_command(device_data)
-
-        if not success and alternative_values:
-            for alt_value in alternative_values:
-                device_data["subDevice"][0]["value"] = alt_value
-                success = await self._auth_manager.send_device_command(device_data)
-                if success:
-                    break
 
         if success:
             self._update_local_subdevice_value(

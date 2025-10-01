@@ -170,7 +170,6 @@ class CommaxLight(CoordinatorEntity, RestoreEntity, LightEntity):
 
         asyncio.create_task(self._delayed_refresh())
 
-
     async def _delayed_refresh(self) -> None:
         """1초 후 상태 새로고침"""
         await asyncio.sleep(1)
