@@ -7,7 +7,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .auth import CommaxAuthManager
+from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
 from .const import (
     CONF_CLIENT_SECRET,
     CONF_MOBILE_UUID,
@@ -49,13 +49,26 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     session=session,
                 )
 
-                if await auth_manager.authenticate():
-                    return self.async_create_entry(
-                        title=user_input.get(CONF_NAME, NAME),
-                        data=user_input,
-                    )
-                else:
+                try:
+                    devices = await auth_manager.get_device_list()
+                except CommaxAuthenticationError:
+                    _LOGGER.warning("Commax 인증에 실패했습니다 - 사용자 ID: %s", user_input[CONF_USER_ID])
                     errors["base"] = "auth"
+                except CommaxApiError as err:
+                    _LOGGER.warning("Commax API 통신 중 오류가 발생했습니다: %s", err)
+                    errors["base"] = "cannot_connect"
+                else:
+                    if not devices:
+                        _LOGGER.warning(
+                            "리소스 번호에 해당하는 디바이스가 없습니다 - resource_no: %s",
+                            user_input[CONF_RESOURCE_NO],
+                        )
+                        errors["base"] = "no_devices"
+                    else:
+                        return self.async_create_entry(
+                            title=user_input.get(CONF_NAME, NAME),
+                            data=user_input,
+                        )
 
             except Exception:
                 _LOGGER.exception("설정 중 예상치 못한 오류 발생")
