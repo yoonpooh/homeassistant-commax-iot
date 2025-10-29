@@ -17,6 +17,8 @@
     },
     "error": {
       "auth": "Authentication failed. Please check your credentials.",
+      "cannot_connect": "Unable to connect to the Commax service.",
+      "no_devices": "No devices were found for the provided resource number.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {

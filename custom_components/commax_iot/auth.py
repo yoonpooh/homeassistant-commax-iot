@@ -22,6 +22,14 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+class CommaxApiError(Exception):
+    """Raised when the Commax API returns an error."""
+
+
+class CommaxAuthenticationError(CommaxApiError):
+    """Raised when authentication against the Commax API fails."""
+
+
 class CommaxAuthManager:
     """Commax IoT API 인증 관리자"""
 
@@ -67,10 +75,16 @@ class CommaxAuthManager:
 
             async with self._session.post(AUTH_URL, json=auth_data) as response:
                 if response.status != 200:
+                    _LOGGER.error("인증 실패 - HTTP %s", response.status)
                     return False
                 result = await response.json()
 
             if result.get("resultCode") != API_SUCCESS_CODE:
+                _LOGGER.error(
+                    "인증 실패 - 코드: %s, 메시지: %s",
+                    result.get("resultCode"),
+                    result.get("resultMessage"),
+                )
                 return False
 
             self._access_token = result.get("accessToken")
@@ -92,6 +106,7 @@ class CommaxAuthManager:
             return True
 
         except Exception:
+            _LOGGER.exception("인증 중 예외가 발생했습니다")
             return False
 
     async def get_access_token(self) -> Optional[str]:
@@ -120,36 +135,57 @@ class CommaxAuthManager:
         """디바이스 목록 조회"""
         token = await self.get_access_token()
         if not token:
-            return []
+            raise CommaxAuthenticationError("액세스 토큰을 가져오지 못했습니다")
+
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{DEVICE_LIST_URL}?resourceNo={self._resource_no}"
 
         try:
-            headers = {"Authorization": f"Bearer {token}"}
-            url = f"{DEVICE_LIST_URL}?resourceNo={self._resource_no}"
+            result: Optional[Dict] = None
+            for attempt in range(2):
+                async with self._session.get(url, headers=headers) as response:
+                    if response.status == 401 and attempt == 0:
+                        self._authenticated = False
+                        token = await self.get_access_token()
+                        if not token:
+                            raise CommaxAuthenticationError("토큰 재발급에 실패했습니다")
+                        headers["Authorization"] = f"Bearer {token}"
+                        continue
 
-            async with self._session.get(url, headers=headers) as response:
-                if response.status == 401:
-                    self._authenticated = False
-                    token = await self.get_access_token()
-                    if not token:
-                        return []
-                    headers["Authorization"] = f"Bearer {token}"
-                    async with self._session.get(url, headers=headers) as retry_response:
-                        if retry_response.status != 200:
-                            return []
-                        result = await retry_response.json()
-                elif response.status != 200:
-                    return []
-                else:
+                    if response.status != 200:
+                        _LOGGER.error(
+                            "디바이스 목록 조회 실패 - HTTP %s", response.status
+                        )
+                        raise CommaxApiError(
+                            f"디바이스 목록 조회 실패 - HTTP {response.status}"
+                        )
+
                     result = await response.json()
+                    break
 
-            if result.get("resultCode") != API_SUCCESS_CODE:
-                return []
+            if result is None:
+                raise CommaxApiError("디바이스 목록 응답을 받을 수 없습니다")
 
-            resource = result.get("resource", {})
-            return resource.get("devices", {}).get("object", [])
+        except aiohttp.ClientError as err:
+            raise CommaxApiError("디바이스 목록 조회 중 통신 오류가 발생했습니다") from err
 
-        except Exception:
+        if result.get("resultCode") != API_SUCCESS_CODE:
+            _LOGGER.error(
+                "디바이스 목록 조회 실패 - 코드: %s, 메시지: %s",
+                result.get("resultCode"),
+                result.get("resultMessage"),
+            )
+            raise CommaxApiError(
+                f"디바이스 목록 조회 실패 - 코드: {result.get('resultCode')}"
+            )
+
+        resource = result.get("resource", {})
+        devices = resource.get("devices", {}).get("object", [])
+        if not isinstance(devices, list):
+            _LOGGER.debug("예상치 못한 디바이스 목록 응답 형식: %s", devices)
             return []
+
+        return devices
 
     async def send_device_command(self, device_data: Dict) -> bool:
         """디바이스 제어 명령 전송"""

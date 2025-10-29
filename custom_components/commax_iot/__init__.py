@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .auth import CommaxAuthManager
+from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
 from .const import (
     CONF_CLIENT_SECRET,
     CONF_MOBILE_UUID,
@@ -88,9 +88,6 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             devices = await self.auth_manager.get_device_list()
 
-            if not devices:
-                return self._devices or {}
-
             device_data = {}
             for device in devices:
                 root_uuid = device.get("rootUuid")
@@ -100,9 +97,9 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
             self._devices = device_data
             return device_data
 
+        except (CommaxAuthenticationError, CommaxApiError) as err:
+            raise UpdateFailed(f"Commax API 오류: {err}") from err
         except Exception as err:
-            if self._devices:
-                return self._devices
             raise UpdateFailed(f"데이터 업데이트 실패: {err}") from err
 
     def get_device_by_uuid(self, root_uuid: str):
