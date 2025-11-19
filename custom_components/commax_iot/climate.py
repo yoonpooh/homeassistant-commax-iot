@@ -38,7 +38,13 @@ async def async_setup_entry(
 
     entities = []
 
-    await coordinator.async_refresh()
+    # 데이터가 준비될 때까지 기다림
+    if not coordinator.data:
+        await coordinator.async_refresh()
+
+    # 데이터가 여전히 없으면 빈 리스트로 초기화
+    if not coordinator.data:
+        coordinator.data = {}
 
     for device_uuid, device_data in coordinator.data.items():
         if device_data.get("commaxDevice") == DEVICE_TYPE_BOILER:
