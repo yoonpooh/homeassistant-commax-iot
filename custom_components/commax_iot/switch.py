@@ -13,11 +13,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DEVICE_OFF,
     DEVICE_ON,
-    DEVICE_TYPE_BOILER,
     DEVICE_TYPE_SWITCH,
     DOMAIN,
     SUBDEVICE_SWITCH_BINARY,
-    SUBDEVICE_THERMOSTAT_MODE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,24 +56,6 @@ async def async_setup_entry(
 
             if has_switch:
                 entities.append(CommaxSwitch(coordinator, auth_manager, device_data))
-
-        # 보일러(온도조절기) on/off 스위치 처리
-        elif device_data.get("commaxDevice") == DEVICE_TYPE_BOILER:
-            # thermostatMode 서브디바이스 확인
-            has_mode = False
-            for subdevice in device_data.get("subDevice", []):
-                if (subdevice.get("sort") == SUBDEVICE_THERMOSTAT_MODE and
-                    subdevice.get("type") == "readWrite"):
-                    has_mode = True
-                    break
-
-            if has_mode:
-                entities.append(CommaxThermostatSwitch(coordinator, auth_manager, device_data))
-                _LOGGER.debug(
-                    "보일러 스위치 등록: %s (UUID: %s)",
-                    device_data.get("nickname"),
-                    device_data.get("rootUuid"),
-                )
 
     _LOGGER.info("총 %d개의 스위치 디바이스 등록됨", len(entities))
     if entities:
@@ -179,132 +159,6 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         if success:
             self._update_local_subdevice_value(
                 self._switch_subdevice.get("subUuid"), value
-            )
-            self.async_write_ha_state()
-
-        asyncio.create_task(self._delayed_refresh())
-
-    async def _delayed_refresh(self) -> None:
-        """1초 후 상태 새로고침"""
-        await asyncio.sleep(1)
-        await self.coordinator.async_request_refresh()
-
-    def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
-        """로컬 서브디바이스 값을 즉시 업데이트"""
-        if not sub_uuid:
-            return
-
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == sub_uuid:
-                subdevice["value"] = value
-                break
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """코디네이터 업데이트 처리"""
-        self.async_write_ha_state()
-
-
-class CommaxThermostatSwitch(CoordinatorEntity, SwitchEntity):
-    """Commax IoT 보일러 on/off 스위치 엔터티"""
-
-    def __init__(self, coordinator, auth_manager, device_data):
-        """보일러 스위치 엔터티 초기화"""
-        super().__init__(coordinator)
-        self._auth_manager = auth_manager
-        self._device_data = device_data
-        self._root_uuid = device_data.get("rootUuid")
-        self._nickname = device_data.get("nickname", "Commax Thermostat")
-
-        self._mode_subdevice = next(
-            (
-                subdevice
-                for subdevice in device_data.get("subDevice", [])
-                if subdevice.get("sort") == SUBDEVICE_THERMOSTAT_MODE
-                and subdevice.get("type") == "readWrite"
-            ),
-            None,
-        )
-
-        self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_thermostat_switch"
-        self._attr_name = f"{self._nickname} 스위치"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._root_uuid)},
-            name=self._nickname,
-            manufacturer="Commax",
-            model=device_data.get("rootDevice", "Boiler"),
-        )
-
-    @property
-    def is_on(self) -> bool:
-        """보일러가 켜져 있는지 반환"""
-        if not self._mode_subdevice:
-            return False
-
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return False
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._mode_subdevice.get("subUuid"):
-                current_value = subdevice.get("value")
-                if current_value is None:
-                    return False
-                normalized = str(current_value).lower()
-                return normalized == "heat"
-
-        return False
-
-    @property
-    def available(self) -> bool:
-        """디바이스가 사용 가능한지 반환"""
-        return self.coordinator.last_update_success and self._mode_subdevice is not None
-
-    @property
-    def device_class(self) -> str:
-        """디바이스 클래스 반환"""
-        return "switch"
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """보일러 켜기"""
-        if not self._mode_subdevice:
-            _LOGGER.error("보일러 모드 서브디바이스를 찾을 수 없습니다")
-            return
-        await self._send_command("heat")
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """보일러 끄기"""
-        if not self._mode_subdevice:
-            _LOGGER.error("보일러 모드 서브디바이스를 찾을 수 없습니다")
-            return
-        await self._send_command(DEVICE_OFF)
-
-    async def _send_command(self, value: str) -> None:
-        """디바이스 제어 명령 전송"""
-        device_data = {
-            "subDevice": [
-                {
-                    "value": value,
-                    "funcCommand": "set",
-                    "type": "readWrite",
-                    "subUuid": self._mode_subdevice.get("subUuid"),
-                    "sort": SUBDEVICE_THERMOSTAT_MODE,
-                }
-            ],
-            "rootUuid": self._root_uuid,
-            "nickname": self._nickname,
-            "rootDevice": self._device_data.get("rootDevice"),
-        }
-
-        success = await self._auth_manager.send_device_command(device_data)
-
-        if success:
-            self._update_local_subdevice_value(
-                self._mode_subdevice.get("subUuid"), value
             )
             self.async_write_ha_state()
 
