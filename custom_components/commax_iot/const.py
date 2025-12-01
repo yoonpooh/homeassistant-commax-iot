@@ -32,6 +32,7 @@ DEVICE_TYPE_FAN = "fanSystem"
 
 # 서브 디바이스 타입
 SUBDEVICE_SWITCH_BINARY = "switchBinary"
+SUBDEVICE_ELECTRIC_METER = "electricMeter"
 SUBDEVICE_AIR_TEMPERATURE = "airTemperature"
 SUBDEVICE_THERMOSTAT_MODE = "thermostatMode"
 SUBDEVICE_THERMOSTAT_SETPOINT = "thermostatSetpoint"
@@ -60,4 +61,4 @@ DEFAULT_TOKEN_EXPIRE = 259200  # 기본 만료 3일
 TOKEN_EXPIRE_BUFFER = 60  # 만료 1분 전 재인증 시도
 
 # 플랫폼 목록
-PLATFORMS = ["light", "climate", "switch", "fan"]
+PLATFORMS = ["light", "climate", "switch", "fan", "sensor"]

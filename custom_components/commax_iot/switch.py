@@ -1,7 +1,7 @@
 """Commax IoT 스위치 플랫폼"""
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -15,6 +15,7 @@ from .const import (
     DEVICE_ON,
     DEVICE_TYPE_SWITCH,
     DOMAIN,
+    SUBDEVICE_ELECTRIC_METER,
     SUBDEVICE_SWITCH_BINARY,
 )
 
@@ -83,6 +84,15 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             None,
         )
 
+        self._electric_meter_subdevice = next(
+            (
+                subdevice
+                for subdevice in device_data.get("subDevice", [])
+                if subdevice.get("sort") == SUBDEVICE_ELECTRIC_METER
+            ),
+            None,
+        )
+
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_switch"
         self._attr_name = self._nickname
         self._attr_device_info = DeviceInfo(
@@ -116,6 +126,43 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
     def available(self) -> bool:
         """디바이스가 사용 가능한지 반환"""
         return self.coordinator.last_update_success and self._switch_subdevice is not None
+
+    @property
+    def current_power_w(self) -> Optional[float]:
+        """현재 소비 전력(W) 반환"""
+        if not self._electric_meter_subdevice:
+            return None
+
+        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if not device_data:
+            return None
+
+        for subdevice in device_data.get("subDevice", []):
+            if subdevice.get("subUuid") == self._electric_meter_subdevice.get("subUuid"):
+                raw_value = subdevice.get("value")
+                precision_raw = subdevice.get("precision") or self._electric_meter_subdevice.get("precision")
+
+                try:
+                    precision = int(precision_raw) if precision_raw is not None else 0
+                except (TypeError, ValueError):
+                    precision = 0
+
+                try:
+                    value = float(raw_value)
+                except (TypeError, ValueError):
+                    _LOGGER.debug(
+                        "전력 값 변환 실패 - raw: %s, device: %s",
+                        raw_value,
+                        self._nickname,
+                    )
+                    return None
+
+                if precision > 0:
+                    value /= 10**precision
+
+                return value
+
+        return None
 
     @property
     def device_class(self) -> str:
