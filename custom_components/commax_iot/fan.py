@@ -265,7 +265,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                         preset_mode,
                         self._nickname,
                     )
-            elif not self.is_on():
+            elif not self.is_on:
                 target_mode = self._get_current_mode() or FAN_DEFAULT_MODE
 
             if target_mode and target_mode != self._get_current_mode():
@@ -349,7 +349,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             )
             return
 
-        if preset_mode == self._get_current_mode() and self.is_on():
+        if preset_mode == self._get_current_mode() and self.is_on:
             _LOGGER.debug(
                 "이미 동일한 프리셋 모드(%s)입니다: %s",
                 preset_mode,
@@ -358,7 +358,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             return
 
         payloads = []
-        if not self.is_on():
+        if not self.is_on:
             payloads.append(self._build_switch_payload(DEVICE_ON))
 
         payloads.append(self._build_mode_payload(preset_mode))
