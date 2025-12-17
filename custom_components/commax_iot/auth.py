@@ -12,10 +12,12 @@ from .const import (
     AUTH_URL,
     COMMAND_URL,
     DEFAULT_CLIENT_ID,
+    DEFAULT_CLIENT_SECRET,
     DEFAULT_GRANT_TYPE,
     DEFAULT_OS_CODE,
     DEFAULT_TOKEN_EXPIRE,
     DEVICE_LIST_URL,
+    GROUP_URL,
     TOKEN_EXPIRE_BUFFER,
 )
 
@@ -35,14 +37,12 @@ class CommaxAuthManager:
 
     def __init__(
         self,
-        client_secret: str,
         mobile_uuid: str,
         user_id: str,
         user_pass: str,
-        resource_no: str,
         session: aiohttp.ClientSession,
+        resource_no: Optional[str] = None,
     ):
-        self._client_secret = client_secret
         self._mobile_uuid = mobile_uuid
         self._user_id = user_id
         self._user_pass = user_pass
@@ -54,6 +54,10 @@ class CommaxAuthManager:
         self._token_expires_at: Optional[int] = None
         self._authenticated = False
 
+    def set_resource_no(self, resource_no: str) -> None:
+        """리소스 번호 설정"""
+        self._resource_no = resource_no
+
     async def authenticate(self) -> bool:
         """인증 수행"""
         try:
@@ -61,7 +65,7 @@ class CommaxAuthManager:
 
             encoded_password = urllib.parse.quote(self._user_pass)
             auth_data = {
-                "clientSecret": self._client_secret,
+                "clientSecret": DEFAULT_CLIENT_SECRET,
                 "user": {
                     "mobileUuid": self._mobile_uuid,
                     "osCode": DEFAULT_OS_CODE,
@@ -131,8 +135,55 @@ class CommaxAuthManager:
 
         return True
 
+    async def get_resource_no(self) -> Optional[str]:
+        """그룹 정보에서 리소스 번호 조회"""
+        token = await self.get_access_token()
+        if not token:
+            raise CommaxAuthenticationError("액세스 토큰을 가져오지 못했습니다")
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "x-device-id": self._mobile_uuid,
+        }
+
+        try:
+            async with self._session.post(GROUP_URL, json={}, headers=headers) as response:
+                if response.status != 200:
+                    _LOGGER.error("그룹 정보 조회 실패 - HTTP %s", response.status)
+                    raise CommaxApiError(f"그룹 정보 조회 실패 - HTTP {response.status}")
+
+                result = await response.json()
+
+            if result.get("resultCode") != API_SUCCESS_CODE:
+                _LOGGER.error(
+                    "그룹 정보 조회 실패 - 코드: %s, 메시지: %s",
+                    result.get("resultCode"),
+                    result.get("resultMessage"),
+                )
+                raise CommaxApiError(f"그룹 정보 조회 실패 - 코드: {result.get('resultCode')}")
+
+            group_list = result.get("groupList", [])
+            for group in group_list:
+                members = group.get("member", [])
+                for member in members:
+                    if member.get("type") == "resource":
+                        resource_no = member.get("resourceNo")
+                        if resource_no:
+                            _LOGGER.debug("리소스 번호 자동 획득: %s", resource_no)
+                            return resource_no
+
+            _LOGGER.warning("그룹에서 리소스를 찾을 수 없습니다")
+            return None
+
+        except aiohttp.ClientError as err:
+            raise CommaxApiError("그룹 정보 조회 중 통신 오류가 발생했습니다") from err
+
     async def get_device_list(self) -> List[Dict]:
         """디바이스 목록 조회"""
+        if not self._resource_no:
+            raise CommaxApiError("리소스 번호가 설정되지 않았습니다")
+
         token = await self.get_access_token()
         if not token:
             raise CommaxAuthenticationError("액세스 토큰을 가져오지 못했습니다")

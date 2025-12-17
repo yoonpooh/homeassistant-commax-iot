@@ -10,7 +10,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
 from .const import (
-    CONF_CLIENT_SECRET,
     CONF_MOBILE_UUID,
     CONF_RESOURCE_NO,
     CONF_UPDATE_INTERVAL,
@@ -35,12 +34,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
 
     auth_manager = CommaxAuthManager(
-        client_secret=entry.data[CONF_CLIENT_SECRET],
         mobile_uuid=entry.data[CONF_MOBILE_UUID],
         user_id=entry.data[CONF_USER_ID],
         user_pass=entry.data[CONF_USER_PASS],
-        resource_no=entry.data[CONF_RESOURCE_NO],
         session=session,
+        resource_no=entry.data[CONF_RESOURCE_NO],
     )
 
     coordinator = CommaxDataUpdateCoordinator(

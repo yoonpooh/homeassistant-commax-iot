@@ -6,11 +6,8 @@
         "description": "Enter your Commax IoT credentials",
         "data": {
           "name": "Name",
-          "client_secret": "Client Secret",
-          "mobile_uuid": "Mobile UUID",
           "user_id": "User ID",
           "user_pass": "Password",
-          "resource_no": "Resource No",
           "update_interval": "Update Interval (seconds)"
         }
       }
@@ -18,7 +15,8 @@
     "error": {
       "auth": "Authentication failed. Please check your credentials.",
       "cannot_connect": "Unable to connect to the Commax service.",
-      "no_devices": "No devices were found for the provided resource number.",
+      "no_resource": "No registered resource (wallpad) found.",
+      "no_devices": "No devices were found for the resource.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {

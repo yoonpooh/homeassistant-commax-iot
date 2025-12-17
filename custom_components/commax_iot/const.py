@@ -6,12 +6,12 @@ VERSION = "1.0.6"
 
 # API 엔드포인트
 AUTH_URL = "https://gauth-v2.commaxcloud.net/v2/oauth/user/authorize"
+GROUP_URL = "https://gauth-v2.commaxcloud.net/v2/group"
 IOT_BASE_URL = "https://iot-v2.commaxcloud.net:443/v2"
 DEVICE_LIST_URL = f"{IOT_BASE_URL}/resource/device/list"
 COMMAND_URL = f"{IOT_BASE_URL}/command"
 
 # 설정 키
-CONF_CLIENT_SECRET = "client_secret"
 CONF_MOBILE_UUID = "mobile_uuid"
 CONF_USER_ID = "user_id"
 CONF_USER_PASS = "user_pass"
@@ -21,6 +21,7 @@ CONF_UPDATE_INTERVAL = "update_interval"
 # 기본값
 DEFAULT_UPDATE_INTERVAL = 30
 DEFAULT_CLIENT_ID = "APP-IOS-com.commax.iphomeiot"
+DEFAULT_CLIENT_SECRET = "Yb6SbSWIBMlV59F43eZo-a"
 DEFAULT_OS_CODE = "IOS"
 DEFAULT_GRANT_TYPE = "password"
 
