@@ -33,40 +33,11 @@ Commax IoT 시스템을 HomeAssistant에 연동하기 위한 Custom Integration�
 1. **설정 > 기기 및 서비스 > 통합 구성요소 추가**
 2. "Commax IoT" 검색 및 선택
 3. 다음 정보 입력:
-   - **Client Secret**: Commax 앱에서 발급받은 클라이언트 시크릿
-   - **Mobile UUID**: 모바일 디바이스 고유 식별자
    - **사용자 ID**: Commax 계정 아이디
    - **비밀번호**: Commax 계정 비밀번호
-   - **Resource No**: 리소스 번호
-   - **업데이트 간격**: 상태 업데이트 주기 (기본값: 30초)
+   - **업데이트 간격**: 상태 업데이트 주기 (기본값: 30초, 선택사항)
 
-### YAML 설정 (선택사항)
-
-```yaml
-commax_iot:
-  client_secret: "your_client_secret"
-  mobile_uuid: "your_mobile_uuid"
-  user_id: "your_user_id"
-  user_pass: "your_password"
-  resource_no: "your_resource_no"
-  update_interval: 30
-```
-
-## 필요한 정보 획득 방법
-
-### Client Secret 및 Mobile UUID
-
-이 정보는 Commax 앱의 네트워크 트래픽을 분석하여 얻을 수 있습니다:
-
-1. 네트워크 모니터링 도구 사용 (예: Charles Proxy, Wireshark)
-2. Commax 앱에서 로그인 시도
-3. `https://gauth-v2.commaxcloud.net/v2/oauth/user/authorize` 요청에서 확인
-
-### Resource No
-
-1. Commax 앱 로그인 후
-2. 디바이스 목록 API 호출에서 확인
-3. 또는 앱의 설정에서 확인 가능
+> **v1.0.7부터 간소화된 설정**: Client Secret, Mobile UUID, Resource No는 자동으로 처리되어 더 이상 입력할 필요가 없습니다.
 
 ## 사용법
 
@@ -132,13 +103,17 @@ data:
 
 ### 인증 실패
 
-- Client Secret, Mobile UUID가 올바른지 확인
 - 사용자 ID/비밀번호가 정확한지 확인
 - Commax 계정이 IoT 서비스에 등록되어 있는지 확인
+- Commax IoT 앱에서 정상적으로 로그인되는지 확인
+
+### 리소스를 찾을 수 없음
+
+- Commax IoT 앱에서 월패드가 등록되어 있는지 확인
+- 계정에 연결된 세대가 있는지 확인
 
 ### 디바이스가 표시되지 않음
 
-- Resource No가 올바른지 확인
 - 해당 계정에 연결된 디바이스가 있는지 확인
 - HomeAssistant 로그에서 오류 메시지 확인
 
