@@ -7,6 +7,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
 from .const import (
@@ -92,7 +93,9 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Optional(CONF_NAME, default=NAME): str,
                 vol.Required(CONF_USER_ID): str,
-                vol.Required(CONF_USER_PASS, description={"type": "password"}): str,
+                vol.Required(CONF_USER_PASS): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
                 vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
             }),
             errors=errors,
