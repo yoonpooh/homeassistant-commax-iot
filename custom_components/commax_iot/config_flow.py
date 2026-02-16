@@ -7,13 +7,6 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-try:
-    from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
-except ImportError:  # pragma: no cover - older HA compatibility
-    TextSelector = None
-    TextSelectorConfig = None
-    TextSelectorType = None
-
 from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
 from .const import (
     CONF_MOBILE_UUID,
@@ -121,15 +114,7 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("설정 중 예상치 못한 오류 발생")
                 errors["base"] = "unknown"
 
-        # HA 버전/환경에 따라 PASSWORD selector가 없을 수 있어 안전하게 폴백 처리
         password_field = str
-        if TextSelector is not None and TextSelectorConfig is not None and TextSelectorType is not None:
-            try:
-                password_field = TextSelector(
-                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                )
-            except Exception:
-                password_field = str
 
         return self.async_show_form(
             step_id="user",
