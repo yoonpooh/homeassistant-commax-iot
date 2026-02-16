@@ -265,7 +265,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                         preset_mode,
                         self._nickname,
                     )
-            elif not self.is_on():
+            elif not self.is_on:
                 target_mode = self._get_current_mode() or FAN_DEFAULT_MODE
 
             if target_mode and target_mode != self._get_current_mode():
@@ -349,7 +349,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             )
             return
 
-        if preset_mode == self._get_current_mode() and self.is_on():
+        if preset_mode == self._get_current_mode() and self.is_on:
             _LOGGER.debug(
                 "이미 동일한 프리셋 모드(%s)입니다: %s",
                 preset_mode,
@@ -358,7 +358,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             return
 
         payloads = []
-        if not self.is_on():
+        if not self.is_on:
             payloads.append(self._build_switch_payload(DEVICE_ON))
 
         payloads.append(self._build_mode_payload(preset_mode))
@@ -392,27 +392,36 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         }
 
     async def _send_command(self, subdevice_payloads: list[dict]) -> None:
-        """디바이스 제어 명령 전송"""
+        """디바이스 제어 명령 전송.
+
+        fan 디바이스는 멀티 subDevice 일괄 전송이 무시되는 환경이 있어
+        서브 명령을 순차 단건 전송으로 처리한다.
+        """
         if not subdevice_payloads:
             _LOGGER.error("환기시스템 제어 페이로드가 비어 있습니다: %s", self._nickname)
             return
 
-        device_data = {
-            "subDevice": subdevice_payloads,
-            "rootUuid": self._root_uuid,
-            "nickname": self._nickname,
-            "rootDevice": self._device_data.get("rootDevice"),
-        }
+        success_all = True
 
-        _LOGGER.debug("전송할 환기 명령 데이터: %s", device_data)
-        success = await self._auth_manager.send_device_command(device_data)
+        for payload in subdevice_payloads:
+            device_data = {
+                "subDevice": [payload],
+                "rootUuid": self._root_uuid,
+                "nickname": self._nickname,
+                "rootDevice": self._device_data.get("rootDevice"),
+            }
 
-        if success:
-            for payload in subdevice_payloads:
+            _LOGGER.debug("전송할 환기 명령 데이터: %s", device_data)
+            success = await self._auth_manager.send_device_command(device_data)
+
+            if success:
                 self._update_local_subdevice_value(payload.get("subUuid"), payload.get("value"))
+            else:
+                success_all = False
+                _LOGGER.error("환기시스템 제어 실패: %s payload=%s", self._nickname, payload)
+
+        if success_all:
             self.async_write_ha_state()
-        else:
-            _LOGGER.error("환기시스템 제어 실패: %s", self._nickname)
 
         asyncio.create_task(self._delayed_refresh())
 
