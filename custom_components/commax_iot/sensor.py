@@ -264,7 +264,7 @@ class CommaxGenericSensor(CoordinatorEntity, SensorEntity):
         self._root_uuid = device_data.get("rootUuid")
         self._sub_uuid = subdevice.get("subUuid")
         device_name = device_data.get("nickname", "Commax Device")
-        sensor_label = sensor_info.get("label") or sensor_type
+        sensor_label = _resolve_subdevice_label(subdevice, sensor_info, sensor_type)
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_{self._sub_uuid}_{sensor_type}"
         self._attr_name = f"{device_name} {sensor_label}"
@@ -309,6 +309,20 @@ class CommaxGenericSensor(CoordinatorEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """코디네이터 업데이트 처리."""
         self.async_write_ha_state()
+
+
+def _resolve_subdevice_label(subdevice: dict, sensor_info: dict, sensor_type: str) -> str:
+    """기존 통합 네이밍 컨벤션에 맞춰 서브센서 표시명을 결정한다."""
+    for key in ("nickname", "name", "label", "title"):
+        value = subdevice.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    mapping_label = sensor_info.get("label")
+    if isinstance(mapping_label, str) and mapping_label.strip():
+        return mapping_label.strip()
+
+    return sensor_type
 
 
 def _parse_subdevice_value(subdevice: dict) -> Optional[float]:
