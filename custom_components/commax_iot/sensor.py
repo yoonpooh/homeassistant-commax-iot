@@ -148,10 +148,9 @@ def _build_switch_power_sensors(coordinator) -> list[SensorEntity]:
     entities: list[SensorEntity] = []
 
     for device_data in coordinator.data.values():
-        if (
-            device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
-            and device_data.get("rootDevice") == "switch"
-        ):
+        # 일부 단지/버전에선 rootDevice 문자열이 달라 대기전력 센서가 누락될 수 있어
+        # commaxDevice 기준으로만 판단한다.
+        if device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH:
             meter_subdevice = next(
                 (
                     subdevice
@@ -179,10 +178,7 @@ def _build_generic_sensors(coordinator) -> list[SensorEntity]:
 
     for device_data in coordinator.data.values():
         # 스위치는 전용 센서에서 처리하므로 중복 방지
-        if (
-            device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
-            and device_data.get("rootDevice") == "switch"
-        ):
+        if device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH:
             continue
 
         for subdevice in device_data.get("subDevice", []):

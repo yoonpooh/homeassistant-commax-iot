@@ -43,10 +43,7 @@ async def async_setup_entry(
 
     for device_uuid, device_data in coordinator.data.items():
         # 대기전력 스위치 처리
-        if (
-            device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
-            and device_data.get("rootDevice") == "switch"
-        ):
+        if device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH:
             # 필수 subDevice 확인
             has_switch = False
             for subdevice in device_data.get("subDevice", []):
