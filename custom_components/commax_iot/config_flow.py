@@ -121,11 +121,15 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("설정 중 예상치 못한 오류 발생")
                 errors["base"] = "unknown"
 
-        password_field = (
-            TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
-            if TextSelectorType is not None
-            else str
-        )
+        # HA 버전/환경에 따라 PASSWORD selector가 없을 수 있어 안전하게 폴백 처리
+        password_field = str
+        if TextSelector is not None and TextSelectorConfig is not None and TextSelectorType is not None:
+            try:
+                password_field = TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                )
+            except Exception:
+                password_field = str
 
         return self.async_show_form(
             step_id="user",
