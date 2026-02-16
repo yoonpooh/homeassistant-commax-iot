@@ -5,9 +5,14 @@ import uuid
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
-from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
+
+try:
+    from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
+except ImportError:  # pragma: no cover - older HA compatibility
+    TextSelector = None
+    TextSelectorConfig = None
+    TextSelectorType = None
 
 from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
 from .const import (
@@ -62,7 +67,10 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         auth_manager.set_resource_no(resource_no)
                         devices = await auth_manager.get_device_list()
                         if not devices:
-                            _LOGGER.warning("리소스에 등록된 디바이스가 없습니다 - resource_no: %s", resource_no)
+                            _LOGGER.warning(
+                                "리소스에 등록된 디바이스가 없습니다 - resource_no: %s",
+                                resource_no,
+                            )
                             errors["base"] = "no_devices"
                         else:
                             # 자동 생성/획득된 값들을 data에 추가
@@ -76,27 +84,34 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 data=entry_data,
                             )
                 except CommaxAuthenticationError:
-                    _LOGGER.warning("Commax 인증에 실패했습니다 - 사용자 ID: %s", user_input[CONF_USER_ID])
+                    _LOGGER.warning(
+                        "Commax 인증에 실패했습니다 - 사용자 ID: %s",
+                        user_input[CONF_USER_ID],
+                    )
                     errors["base"] = "auth"
                 except CommaxApiError as err:
                     _LOGGER.warning("Commax API 통신 중 오류가 발생했습니다: %s", err)
                     errors["base"] = "cannot_connect"
 
-            except AbortFlow:
-                raise
             except Exception:
                 _LOGGER.exception("설정 중 예상치 못한 오류 발생")
                 errors["base"] = "unknown"
 
+        password_field = (
+            TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+            if TextSelectorType is not None
+            else str
+        )
+
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({
-                vol.Optional(CONF_NAME, default=NAME): str,
-                vol.Required(CONF_USER_ID): str,
-                vol.Required(CONF_USER_PASS): TextSelector(
-                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                ),
-                vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_NAME, default=NAME): str,
+                    vol.Required(CONF_USER_ID): str,
+                    vol.Required(CONF_USER_PASS): password_field,
+                    vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
+                }
+            ),
             errors=errors,
         )
