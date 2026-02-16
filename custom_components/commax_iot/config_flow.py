@@ -130,11 +130,8 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
-class CommaxIoTOptionsFlow(config_entries.OptionsFlow):
+class CommaxIoTOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     """Commax IoT 옵션 설정 흐름."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """옵션 초기 단계."""
