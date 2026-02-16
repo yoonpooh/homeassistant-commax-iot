@@ -85,7 +85,8 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         self._mode_subdevice = None
         self._speed_subdevice = None
         self._speed_options: list[str] = []
-        self._mode_options: list[str] = []
+        # HomeKit 노출 단순화를 위해 프리셋은 auto 단일 모드로 고정
+        self._mode_options: list[str] = [FAN_DEFAULT_MODE]
         for subdevice in device_data.get("subDevice", []):
             if (
                 subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY
@@ -97,11 +98,6 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                 and subdevice.get("type") == "readWrite"
             ):
                 self._mode_subdevice = subdevice
-                mode_options = subdevice.get("subOption")
-                if isinstance(mode_options, list) and mode_options:
-                    self._mode_options = [str(option) for option in mode_options if option]
-                elif subdevice.get("value"):
-                    self._mode_options = [str(subdevice.get("value"))]
             elif (
                 subdevice.get("sort") == SUBDEVICE_FAN_SPEED
                 and subdevice.get("type") == "readWrite"
@@ -140,11 +136,11 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
     @property
     def preset_mode(self) -> Optional[str]:
-        """현재 프리셋 모드 반환"""
+        """현재 프리셋 모드 반환 (auto 단일 노출)."""
         if not self._attr_preset_modes:
             return None
 
-        return self._get_current_mode()
+        return FAN_DEFAULT_MODE if self.is_on else None
 
     @property
     def percentage(self) -> Optional[int]:
@@ -253,22 +249,15 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         payloads = [self._build_switch_payload(DEVICE_ON)]
 
         if self._mode_subdevice:
-            target_mode: Optional[str] = None
-            if preset_mode:
-                if self._attr_preset_modes and preset_mode in self._attr_preset_modes:
-                    target_mode = preset_mode
-                elif not self._attr_preset_modes and preset_mode == FAN_DEFAULT_MODE:
-                    target_mode = preset_mode
-                else:
-                    _LOGGER.warning(
-                        "지원되지 않는 프리셋 모드(%s)가 요청되었습니다: %s",
-                        preset_mode,
-                        self._nickname,
-                    )
-            elif not self.is_on:
-                target_mode = self._get_current_mode() or FAN_DEFAULT_MODE
+            target_mode = FAN_DEFAULT_MODE
+            if preset_mode and preset_mode != FAN_DEFAULT_MODE:
+                _LOGGER.debug(
+                    "요청 프리셋(%s)을 무시하고 auto로 고정합니다: %s",
+                    preset_mode,
+                    self._nickname,
+                )
 
-            if target_mode and target_mode != self._get_current_mode():
+            if target_mode != self._get_current_mode():
                 payloads.append(self._build_mode_payload(target_mode))
 
         if self._speed_subdevice and self._speed_options:
@@ -333,25 +322,17 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         await self._send_command(payloads)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """프리셋 모드 설정"""
-        if not self._mode_subdevice or not self._attr_preset_modes:
+        """프리셋 모드 설정 (auto만 지원)."""
+        if not self._mode_subdevice:
             _LOGGER.warning(
                 "프리셋 모드를 지원하지 않는 디바이스입니다: %s",
                 self._nickname,
             )
             return
 
-        if preset_mode not in self._attr_preset_modes:
+        if preset_mode != FAN_DEFAULT_MODE:
             _LOGGER.warning(
-                "지원되지 않는 프리셋 모드(%s)가 요청되었습니다: %s",
-                preset_mode,
-                self._nickname,
-            )
-            return
-
-        if preset_mode == self._get_current_mode() and self.is_on:
-            _LOGGER.debug(
-                "이미 동일한 프리셋 모드(%s)입니다: %s",
+                "지원되지 않는 프리셋 모드(%s) 요청 - auto만 지원: %s",
                 preset_mode,
                 self._nickname,
             )
@@ -361,8 +342,11 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         if not self.is_on:
             payloads.append(self._build_switch_payload(DEVICE_ON))
 
-        payloads.append(self._build_mode_payload(preset_mode))
-        await self._send_command(payloads)
+        if self._get_current_mode() != FAN_DEFAULT_MODE:
+            payloads.append(self._build_mode_payload(FAN_DEFAULT_MODE))
+
+        if payloads:
+            await self._send_command(payloads)
 
     def _build_switch_payload(self, value: str) -> dict:
         return {
