@@ -29,6 +29,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+def _get_update_interval(entry: ConfigEntry) -> int:
+    """설정/옵션에서 업데이트 주기를 가져온다."""
+    return int(
+        entry.options.get(
+            CONF_UPDATE_INTERVAL,
+            entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+        )
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """설정 항목에서 통합 구성요소 설정"""
     session = async_get_clientsession(hass)
@@ -44,10 +54,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = CommaxDataUpdateCoordinator(
         hass,
         auth_manager,
-        update_interval=entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+        update_interval=_get_update_interval(entry),
     )
 
     await coordinator.async_config_entry_first_refresh()
+
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
@@ -57,6 +69,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """옵션 변경 시 통합을 재로드해 새 설정을 반영한다."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
