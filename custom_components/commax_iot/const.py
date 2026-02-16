@@ -2,7 +2,7 @@
 
 DOMAIN = "commax_iot"
 NAME = "COMMAX IoT"
-VERSION = "2026.2.16.4"
+VERSION = "2026.2.16.5"
 
 # API 엔드포인트
 AUTH_URL = "https://gauth-v2.commaxcloud.net/v2/oauth/user/authorize"
