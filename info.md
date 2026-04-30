@@ -11,12 +11,12 @@
 
 ## 설정 필요 사항
 
-설치 후 다음 정보가 필요합니다:
+설치 후 Home Assistant 통합 구성요소 추가 화면에서 다음 정보만 입력하면 됩니다:
 
-- Client Secret (Commax 앱에서 추출)
-- Mobile UUID (Commax 앱에서 추출)
 - 사용자 ID 및 비밀번호
-- Resource No
+- 업데이트 간격 (선택, 기본값 30초)
+
+Client Secret, Mobile UUID, Resource No는 통합 구성요소가 자동으로 처리합니다.
 
 자세한 설정 방법은 [GitHub 저장소](https://github.com/yoonpooh/homeassistant-commax-iot)를 참조하세요.
 

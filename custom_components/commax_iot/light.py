@@ -36,7 +36,11 @@ async def async_setup_entry(
 
     entities = []
 
-    await coordinator.async_refresh()
+    if not coordinator.data:
+        await coordinator.async_refresh()
+
+    if not coordinator.data:
+        coordinator.data = {}
 
     for device_uuid, device_data in coordinator.data.items():
         if device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT:
