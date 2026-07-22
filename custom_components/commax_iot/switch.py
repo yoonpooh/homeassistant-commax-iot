@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DEVICE_OFF,
     DEVICE_ON,
+    DEVICE_TYPE_LIGHT,
     DEVICE_TYPE_SWITCH,
     DOMAIN,
     SUBDEVICE_ELECTRIC_METER,
@@ -42,8 +43,8 @@ async def async_setup_entry(
         coordinator.data = {}
 
     for device_uuid, device_data in coordinator.data.items():
-        # 대기전력 스위치 처리
-        if (
+        # 대기전력 스위치와 범용 벽 스위치 처리
+        if device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT or (
             device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
             and device_data.get("rootDevice") == "switch"
         ):
@@ -167,7 +168,11 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def device_class(self) -> str:
         """디바이스 클래스 반환"""
-        return "outlet"
+        return (
+            "outlet"
+            if self._device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
+            else "switch"
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """스위치 켜기"""

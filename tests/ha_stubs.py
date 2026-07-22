@@ -32,6 +32,7 @@ def install_homeassistant_stubs() -> None:
     sensor = types.ModuleType("homeassistant.components.sensor")
     fan = types.ModuleType("homeassistant.components.fan")
     light = types.ModuleType("homeassistant.components.light")
+    switch = types.ModuleType("homeassistant.components.switch")
 
     class ConfigFlow:
         def __init_subclass__(cls, **kwargs):
@@ -91,6 +92,9 @@ def install_homeassistant_stubs() -> None:
         pass
 
     class LightEntity:
+        pass
+
+    class SwitchEntity:
         pass
 
     class RestoreEntity:
@@ -171,6 +175,7 @@ def install_homeassistant_stubs() -> None:
     fan.FanEntityFeature = FanEntityFeature
     light.LightEntity = LightEntity
     light.ColorMode = ColorMode
+    switch.SwitchEntity = SwitchEntity
     aiohttp.ClientSession = ClientSession
     aiohttp.ClientError = ClientError
     voluptuous.Schema = Schema
@@ -195,5 +200,6 @@ def install_homeassistant_stubs() -> None:
             "homeassistant.components.sensor": sensor,
             "homeassistant.components.fan": fan,
             "homeassistant.components.light": light,
+            "homeassistant.components.switch": switch,
         }
     )

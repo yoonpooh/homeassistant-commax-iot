@@ -10,7 +10,7 @@ install_homeassistant_stubs()
 
 from custom_components.commax_iot import const
 from custom_components.commax_iot.fan import async_setup_entry as async_setup_fan
-from custom_components.commax_iot.light import async_setup_entry as async_setup_light
+from custom_components.commax_iot.switch import async_setup_entry as async_setup_switch
 
 
 class FakeCoordinator:
@@ -50,7 +50,7 @@ def _make_hass(coordinator: FakeCoordinator) -> object:
 
 
 class PlatformSetupTest(unittest.IsolatedAsyncioTestCase):
-    async def test_light_setup_uses_existing_first_refresh_data(self) -> None:
+    async def test_switch_setup_registers_light_as_generic_switch(self) -> None:
         coordinator = FakeCoordinator(
             {
                 "light-root-1": {
@@ -71,7 +71,7 @@ class PlatformSetupTest(unittest.IsolatedAsyncioTestCase):
         )
         added_entities = []
 
-        await async_setup_light(
+        await async_setup_switch(
             _make_hass(coordinator),
             FakeEntry(),
             lambda entities, update_before_add=False: added_entities.extend(entities),
@@ -79,6 +79,8 @@ class PlatformSetupTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(coordinator.refresh_count, 0)
         self.assertEqual(len(added_entities), 1)
+        self.assertEqual(added_entities[0].device_class, "switch")
+        self.assertNotIn("light", const.PLATFORMS)
 
     async def test_fan_setup_uses_existing_first_refresh_data(self) -> None:
         coordinator = FakeCoordinator(
@@ -110,7 +112,7 @@ class PlatformSetupTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(coordinator.refresh_count, 0)
         self.assertEqual(len(added_entities), 1)
 
-    async def test_light_setup_keeps_fallback_refresh_when_data_is_missing(self) -> None:
+    async def test_switch_setup_keeps_fallback_refresh_when_data_is_missing(self) -> None:
         coordinator = FakeCoordinator(
             {},
             {
@@ -132,7 +134,7 @@ class PlatformSetupTest(unittest.IsolatedAsyncioTestCase):
         )
         added_entities = []
 
-        await async_setup_light(
+        await async_setup_switch(
             _make_hass(coordinator),
             FakeEntry(),
             lambda entities, update_before_add=False: added_entities.extend(entities),

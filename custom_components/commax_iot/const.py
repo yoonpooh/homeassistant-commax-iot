@@ -2,7 +2,7 @@
 
 DOMAIN = "commax_iot"
 NAME = "COMMAX IoT"
-VERSION = "2026.5.1"
+VERSION = "2026.7.22"
 
 # API 엔드포인트
 AUTH_URL = "https://gauth-v2.commaxcloud.net/v2/oauth/user/authorize"
@@ -62,4 +62,4 @@ DEFAULT_TOKEN_EXPIRE = 259200  # 기본 만료 3일
 TOKEN_EXPIRE_BUFFER = 60  # 만료 1분 전 재인증 시도
 
 # 플랫폼 목록
-PLATFORMS = ["light", "climate", "switch", "fan", "sensor"]
+PLATFORMS = ["climate", "switch", "fan", "sensor"]

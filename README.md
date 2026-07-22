@@ -6,7 +6,7 @@ Commax IoT 시스템을 HomeAssistant에 연동하기 위한 Custom Integration�
 
 ## 지원 디바이스
 
-- **조명 (Light)** - 스위치 제어
+- **벽 스위치 (Switch)** - 조명, 실링팬 등 연결 부하 제어
 - **보일러 (Thermostat)** - 온도 센서 및 온도 제어
 - **콘센트 (Switch)** - 대기전력 차단 스위치
 - **환기시스템 (Fan)** - 환기 모드 제어 (bypass/manual/auto)
@@ -41,18 +41,18 @@ Commax IoT 시스템을 HomeAssistant에 연동하기 위한 Custom Integration�
 
 ## 사용법
 
-### 조명 제어
+### 벽 스위치 제어
 
 ```yaml
-# 조명 켜기
-service: light.turn_on
+# 스위치 켜기
+service: switch.turn_on
 target:
-  entity_id: light.commax_living_room
+  entity_id: switch.commax_living_room
 
-# 조명 끄기
-service: light.turn_off
+# 스위치 끄기
+service: switch.turn_off
 target:
-  entity_id: light.commax_living_room
+  entity_id: switch.commax_living_room
 ```
 
 ### 보일러 제어
