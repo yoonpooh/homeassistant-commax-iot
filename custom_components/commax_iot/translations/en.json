@@ -17,7 +17,7 @@
       "cannot_connect": "Unable to connect to the Commax service.",
       "no_resource": "No registered resource (wallpad) found.",
       "no_devices": "No devices were found for the resource.",
-      "invalid_interval": "Update interval must be between 5 and 3600 seconds.",
+      "invalid_interval": "Update interval must be between 1 and 3600 seconds.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {
@@ -35,7 +35,7 @@
       }
     },
     "error": {
-      "invalid_interval": "Update interval must be between 5 and 3600 seconds."
+      "invalid_interval": "Update interval must be between 1 and 3600 seconds."
     }
   }
 }

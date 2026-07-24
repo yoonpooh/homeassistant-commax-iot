@@ -17,7 +17,7 @@
       "cannot_connect": "Commax 서비스에 연결할 수 없습니다.",
       "no_resource": "등록된 리소스(월패드)를 찾을 수 없습니다.",
       "no_devices": "리소스에 등록된 디바이스가 없습니다.",
-      "invalid_interval": "업데이트 간격은 5~3600초 사이여야 합니다.",
+      "invalid_interval": "업데이트 간격은 1~3600초 사이여야 합니다.",
       "unknown": "예상치 못한 오류가 발생했습니다"
     },
     "abort": {
@@ -35,7 +35,7 @@
       }
     },
     "error": {
-      "invalid_interval": "업데이트 간격은 5~3600초 사이여야 합니다."
+      "invalid_interval": "업데이트 간격은 1~3600초 사이여야 합니다."
     }
   }
 }

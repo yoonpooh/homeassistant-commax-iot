@@ -21,7 +21,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-MIN_UPDATE_INTERVAL = 5
+MIN_UPDATE_INTERVAL = 1
 MAX_UPDATE_INTERVAL = 3600
 
 
