@@ -146,6 +146,24 @@ class CommandRetryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(server.commands, ["on", "off", "off", "off"])
 
+    async def test_queued_resend_is_dropped_when_a_newer_command_arrives(self) -> None:
+        server = FakeCommax(ignore=99, values={SUB: "dim", "speed": "low"})
+        manager = self._manager(server)
+
+        await manager.send_device_command(_command("on"))
+        server.gate = gate = asyncio.Event()
+        other = asyncio.create_task(
+            manager.send_device_command(_command("high", sub="speed"))
+        )
+        await asyncio.sleep(0.01)  # on 재전송이 잠금을 기다린다
+        newer = asyncio.create_task(manager.send_device_command(_command("off")))
+        await asyncio.sleep(0.01)
+        gate.set()
+        await asyncio.gather(other, newer)
+        await _settle()
+
+        self.assertEqual(server.commands.count("on"), 1)
+
     async def test_turning_off_stops_resending_other_settings(self) -> None:
         server = FakeCommax(ignore=99, values={SUB: "on", "speed": "low"})
         manager = self._manager(server)

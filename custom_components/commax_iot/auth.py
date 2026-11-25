@@ -291,17 +291,23 @@ class CommaxAuthManager:
         key = (root, tuple(sub.get("subUuid") for sub in subs))
         turning_off = any(_normalize(sub.get("value")) == DEVICE_OFF for sub in subs)
         token = self._latest_command[key] = object()
+        if turning_off:
+            # 끄는 명령은 같은 기기의 모드·풍량 재전송도 무효화한다
+            for other in self._latest_command:
+                if other[0] == root and other != key:
+                    self._latest_command[other] = None
 
         # 전송을 직렬화해 재전송 중인 이전 명령이 새 명령보다 늦게 나가지 않게 한다
         async with self._command_lock:
+            if self._closed:
+                return False
             for pending in list(self._verify_tasks):
-                # 끄는 명령은 같은 기기의 모드·풍량 재전송도 무효화한다
                 if pending == key or (turning_off and pending[0] == root):
                     self._verify_tasks.pop(pending).cancel()
             success = await self._post_command(device_data)
 
         if success and self._latest_command.get(key) is token and not self._closed:
-            task = asyncio.create_task(self._verify_command(device_data))
+            task = asyncio.create_task(self._verify_command(device_data, key, token))
             self._verify_tasks[key] = task
             task.add_done_callback(lambda done: self._forget_verify(key, done))
         return success
@@ -310,10 +316,10 @@ class CommaxAuthManager:
         if self._verify_tasks.get(key) is task:
             del self._verify_tasks[key]
 
-    async def _verify_command(self, device_data: Dict) -> None:
+    async def _verify_command(self, device_data: Dict, key: tuple, token: object) -> None:
         """서버가 수락한 명령이 기기에 반영되지 않았으면 다시 보낸다.
 
-        shortcut: 확인 전(3초 안)에 벽 스위치로 되돌린 경우와 명령 누락을 구분하지 못해
+        shortcut: 확인 전(대기 시간 안)에 벽 스위치로 되돌린 경우와 명령 누락을 구분하지 못해
         다시 보낸다. 기기 이벤트 순서를 알 수 있게 되면 그때 구분한다.
         """
         for attempt in range(1, COMMAND_RETRY_COUNT + 1):
@@ -334,6 +340,9 @@ class CommaxAuthManager:
                 device_data.get("nickname"),
             )
             async with self._command_lock:
+                # 잠금을 기다리는 사이 더 새로운 명령이 들어왔으면 보내지 않는다
+                if self._latest_command.get(key) is not token:
+                    return
                 if not await self._post_command(device_data):
                     return
 
