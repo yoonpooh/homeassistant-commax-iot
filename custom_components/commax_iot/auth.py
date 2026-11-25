@@ -333,16 +333,16 @@ class CommaxAuthManager:
                 return
             if applied is None:
                 continue
-            _LOGGER.warning(
-                "명령이 기기에 반영되지 않아 재전송합니다 (%s/%s): %s",
-                attempt,
-                COMMAND_RETRY_COUNT,
-                device_data.get("nickname"),
-            )
             async with self._command_lock:
                 # 잠금을 기다리는 사이 더 새로운 명령이 들어왔으면 보내지 않는다
                 if self._latest_command.get(key) is not token:
                     return
+                _LOGGER.warning(
+                    "명령이 기기에 반영되지 않아 재전송합니다 (%s/%s): %s",
+                    attempt,
+                    COMMAND_RETRY_COUNT,
+                    device_data.get("nickname"),
+                )
                 if not await self._post_command(device_data):
                     return
 
