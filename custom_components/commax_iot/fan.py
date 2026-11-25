@@ -81,6 +81,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         """환기시스템 엔터티 초기화"""
         super().__init__(coordinator)
         self._auth_manager = auth_manager
+        self._command_lock: Optional[asyncio.Lock] = None
         self._device_data = device_data
         self._root_uuid = device_data.get("rootUuid")
         self._nickname = device_data.get("nickname", "Commax Fan")
@@ -391,22 +392,26 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         success_all = True
 
-        for payload in subdevice_payloads:
-            device_data = {
-                "subDevice": [payload],
-                "rootUuid": self._root_uuid,
-                "nickname": self._nickname,
-                "rootDevice": self._device_data.get("rootDevice"),
-            }
+        # 켜기 묶음의 뒤쪽 명령이 나중에 온 끄기보다 늦게 나가지 않게 한다
+        if self._command_lock is None:
+            self._command_lock = asyncio.Lock()
+        async with self._command_lock:
+            for payload in subdevice_payloads:
+                device_data = {
+                    "subDevice": [payload],
+                    "rootUuid": self._root_uuid,
+                    "nickname": self._nickname,
+                    "rootDevice": self._device_data.get("rootDevice"),
+                }
 
-            _LOGGER.debug("전송할 환기 명령 데이터: %s", device_data)
-            success = await self._auth_manager.send_device_command(device_data)
+                _LOGGER.debug("전송할 환기 명령 데이터: %s", device_data)
+                success = await self._auth_manager.send_device_command(device_data)
 
-            if success:
-                self._update_local_subdevice_value(payload.get("subUuid"), payload.get("value"))
-            else:
-                success_all = False
-                _LOGGER.error("환기시스템 제어 실패: %s payload=%s", self._nickname, payload)
+                if success:
+                    self._update_local_subdevice_value(payload.get("subUuid"), payload.get("value"))
+                else:
+                    success_all = False
+                    _LOGGER.error("환기시스템 제어 실패: %s payload=%s", self._nickname, payload)
 
         if success_all:
             self.async_write_ha_state()
