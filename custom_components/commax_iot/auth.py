@@ -1,6 +1,7 @@
 """Commax IoT 인증 관리자"""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Dict, List, Optional
@@ -10,7 +11,9 @@ import aiohttp
 from .const import (
     API_SUCCESS_CODE,
     AUTH_URL,
+    COMMAND_RETRY_COUNT,
     COMMAND_URL,
+    COMMAND_VERIFY_DELAY,
     DEFAULT_CLIENT_ID,
     DEFAULT_CLIENT_SECRET,
     DEFAULT_GRANT_TYPE,
@@ -30,6 +33,27 @@ class CommaxApiError(Exception):
 
 class CommaxAuthenticationError(CommaxApiError):
     """Raised when authentication against the Commax API fails."""
+
+
+def _same_value(current, sent) -> bool:
+    try:
+        return float(current) == float(sent)
+    except (TypeError, ValueError):
+        return str(current).lower() == str(sent).lower()
+
+
+def _command_applied(devices: List[Dict], device_data: Dict) -> bool:
+    """기기 목록의 값이 보낸 값과 같은지 확인한다. 비교할 값이 없으면 반영된 것으로 본다."""
+    current = {
+        sub.get("subUuid"): sub.get("value")
+        for device in devices
+        if device.get("rootUuid") == device_data.get("rootUuid")
+        for sub in device.get("subDevice", [])
+    }
+    return all(
+        _same_value(current.get(sub.get("subUuid"), sub.get("value")), sub.get("value"))
+        for sub in device_data.get("subDevice", [])
+    )
 
 
 class CommaxAuthManager:
@@ -53,6 +77,7 @@ class CommaxAuthManager:
         self._refresh_token: Optional[str] = None
         self._token_expires_at: Optional[int] = None
         self._authenticated = False
+        self._verify_tasks: Dict[tuple, asyncio.Task] = {}
 
     def set_resource_no(self, resource_no: str) -> None:
         """리소스 번호 설정"""
@@ -239,7 +264,49 @@ class CommaxAuthManager:
         return devices
 
     async def send_device_command(self, device_data: Dict) -> bool:
-        """디바이스 제어 명령 전송"""
+        """디바이스 제어 명령을 전송하고, 반영 여부는 백그라운드에서 확인한다."""
+        key = tuple(sub.get("subUuid") for sub in device_data.get("subDevice", []))
+        self._cancel_verify(key)
+
+        success = await self._post_command(device_data)
+        if success:
+            # 전송을 기다리는 사이 같은 대상에 다른 명령이 확인을 시작했을 수 있다
+            self._cancel_verify(key)
+            task = asyncio.create_task(self._verify_command(device_data))
+            self._verify_tasks[key] = task
+            task.add_done_callback(lambda done: self._forget_verify(key, done))
+        return success
+
+    def _cancel_verify(self, key: tuple) -> None:
+        task = self._verify_tasks.pop(key, None)
+        if task:
+            task.cancel()
+
+    def _forget_verify(self, key: tuple, task: asyncio.Task) -> None:
+        if self._verify_tasks.get(key) is task:
+            del self._verify_tasks[key]
+
+    async def _verify_command(self, device_data: Dict) -> None:
+        """서버가 수락한 명령이 기기에 반영되지 않았으면 다시 보낸다."""
+        for attempt in range(1, COMMAND_RETRY_COUNT + 1):
+            await asyncio.sleep(COMMAND_VERIFY_DELAY)
+            try:
+                devices = await self.get_device_list()
+            except (CommaxApiError, asyncio.TimeoutError):
+                return
+            if _command_applied(devices, device_data):
+                return
+            _LOGGER.warning(
+                "명령이 기기에 반영되지 않아 재전송합니다 (%s/%s): %s",
+                attempt,
+                COMMAND_RETRY_COUNT,
+                device_data.get("nickname"),
+            )
+            if not await self._post_command(device_data):
+                return
+
+    async def _post_command(self, device_data: Dict) -> bool:
+        """디바이스 제어 명령 1회 전송"""
         _LOGGER.debug("API 명령 전송 시작 - device: %s", device_data.get('nickname', 'Unknown'))
 
         token = await self.get_access_token()
