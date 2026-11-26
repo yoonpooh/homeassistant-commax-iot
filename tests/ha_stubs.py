@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 import types
-from enum import IntFlag
+from enum import Enum, IntFlag
 
 
 def install_homeassistant_stubs() -> None:
@@ -30,6 +30,7 @@ def install_homeassistant_stubs() -> None:
     update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
     restore_state = types.ModuleType("homeassistant.helpers.restore_state")
     sensor = types.ModuleType("homeassistant.components.sensor")
+    climate = types.ModuleType("homeassistant.components.climate")
     fan = types.ModuleType("homeassistant.components.fan")
     light = types.ModuleType("homeassistant.components.light")
     switch = types.ModuleType("homeassistant.components.switch")
@@ -88,6 +89,16 @@ def install_homeassistant_stubs() -> None:
     class SensorEntity:
         pass
 
+    class ClimateEntity:
+        pass
+
+    class ClimateEntityFeature(IntFlag):
+        TARGET_TEMPERATURE = 1
+
+    class HVACMode(str, Enum):
+        OFF = "off"
+        HEAT = "heat"
+
     class FanEntity:
         pass
 
@@ -133,6 +144,7 @@ def install_homeassistant_stubs() -> None:
     config_entries.ConfigEntry = ConfigEntry
     config_entries.OptionsFlowWithConfigEntry = OptionsFlowWithConfigEntry
 
+    const.ATTR_TEMPERATURE = "temperature"
     const.CONF_NAME = "name"
     const.STATE_ON = "on"
     const.CONCENTRATION_MICROGRAMS_PER_CUBIC_METER = "ug/m3"
@@ -171,6 +183,9 @@ def install_homeassistant_stubs() -> None:
     sensor.SensorEntity = SensorEntity
     sensor.SensorStateClass = SensorStateClass
 
+    climate.ClimateEntity = ClimateEntity
+    climate.ClimateEntityFeature = ClimateEntityFeature
+    climate.HVACMode = HVACMode
     fan.FanEntity = FanEntity
     fan.FanEntityFeature = FanEntityFeature
     light.LightEntity = LightEntity
@@ -198,6 +213,7 @@ def install_homeassistant_stubs() -> None:
             "homeassistant.helpers.update_coordinator": update_coordinator,
             "homeassistant.helpers.restore_state": restore_state,
             "homeassistant.components.sensor": sensor,
+            "homeassistant.components.climate": climate,
             "homeassistant.components.fan": fan,
             "homeassistant.components.light": light,
             "homeassistant.components.switch": switch,
