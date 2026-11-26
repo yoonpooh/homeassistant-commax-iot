@@ -1,4 +1,3 @@
-"""Characterize the commands sent by the supported control entities."""
 
 import unittest
 from unittest.mock import AsyncMock, Mock

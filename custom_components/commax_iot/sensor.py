@@ -28,6 +28,7 @@ from .const import (
     DOMAIN,
     SUBDEVICE_ELECTRIC_METER,
 )
+from .device import get_current_subdevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -211,9 +212,9 @@ class CommaxPowerSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._root_uuid = device_data.get("rootUuid")
         self._nickname = device_data.get("nickname", "Commax Outlet")
-        self._meter_subdevice = meter_subdevice
+        self._sub_uuid = meter_subdevice.get("subUuid")
 
-        self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_{meter_subdevice.get('subUuid')}_power"
+        self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_{self._sub_uuid}_power"
         self._attr_name = f"{self._nickname} Power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -228,20 +229,13 @@ class CommaxPowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> Optional[float]:
         """현재 전력(W) 반환."""
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return None
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._meter_subdevice.get("subUuid"):
-                return _parse_subdevice_value(subdevice)
-
-        return None
+        subdevice = get_current_subdevice(self.coordinator, self._root_uuid, self._sub_uuid)
+        return _parse_subdevice_value(subdevice) if subdevice else None
 
     @property
     def available(self) -> bool:
         """디바이스가 사용 가능한지 반환."""
-        return self.coordinator.last_update_success and self._meter_subdevice is not None
+        return self.coordinator.last_update_success
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -283,22 +277,8 @@ class CommaxGenericSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> Optional[float]:
         """센서 값 반환 (정밀도 계산 포함)."""
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return None
-
-        target_sub = next(
-            (
-                sub
-                for sub in device_data.get("subDevice", [])
-                if sub.get("subUuid") == self._sub_uuid
-            ),
-            None,
-        )
-        if not target_sub:
-            return None
-
-        return _parse_subdevice_value(target_sub)
+        subdevice = get_current_subdevice(self.coordinator, self._root_uuid, self._sub_uuid)
+        return _parse_subdevice_value(subdevice) if subdevice else None
 
     @property
     def available(self) -> bool:

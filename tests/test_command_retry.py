@@ -10,7 +10,7 @@ from tests.ha_stubs import install_homeassistant_stubs
 
 install_homeassistant_stubs()
 
-from custom_components.commax_iot import auth  # noqa: E402
+from custom_components.commax_iot import auth, switch  # noqa: E402
 from custom_components.commax_iot.const import (  # noqa: E402
     AUTH_URL,
     COMMAND_URL,
@@ -98,7 +98,6 @@ def _switch(manager, commax_device: str = DEVICE_TYPE_LIGHT):
     coordinator.get_device_by_uuid.return_value = device
     entity = CommaxSwitch(coordinator, manager, device)
     entity.async_write_ha_state = lambda: None
-    entity._delayed_refresh = mock.AsyncMock()
     return entity
 
 
@@ -114,6 +113,9 @@ async def _settle() -> None:
 
 class CommandRetryTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
+        refresh = mock.patch.object(switch, "schedule_refresh")
+        refresh.start()
+        self.addCleanup(refresh.stop)
         for name in ("COMMAND_VERIFY_DELAY", "COMMAND_LATE_RETRY_DELAY"):
             patcher = mock.patch.object(auth, name, 0, create=True)
             patcher.start()

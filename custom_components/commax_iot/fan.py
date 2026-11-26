@@ -21,6 +21,14 @@ from .const import (
     SUBDEVICE_FAN_SPEED,
     SUBDEVICE_SWITCH_BINARY,
 )
+from .device import (
+    build_device_command,
+    find_subdevice,
+    get_current_subdevice,
+    schedule_refresh,
+    build_set_command,
+    update_subdevice_value,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,12 +55,7 @@ async def async_setup_entry(
             device_data.get("commaxDevice") == DEVICE_TYPE_FAN
             and device_data.get("rootDevice") == "switch"
         ):
-            has_switch = any(
-                sub.get("sort") == SUBDEVICE_SWITCH_BINARY and sub.get("type") == "readWrite"
-                for sub in device_data.get("subDevice", [])
-            )
-
-            if not has_switch:
+            if not find_subdevice(device_data, SUBDEVICE_SWITCH_BINARY):
                 _LOGGER.debug(
                     "환기시스템 전원 서브디바이스가 없어 스킵: %s (UUID: %s)",
                     device_data.get("nickname"),
@@ -200,16 +203,8 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         if not subdevice:
             return None
 
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return subdevice.get("value")
-
-        target_uuid = subdevice.get("subUuid")
-        for candidate in device_data.get("subDevice", []):
-            if candidate.get("subUuid") == target_uuid:
-                return candidate.get("value")
-
-        return subdevice.get("value")
+        current = get_current_subdevice(self.coordinator, self._root_uuid, subdevice.get("subUuid"))
+        return (subdevice if current is None else current).get("value")
 
     def _speed_to_percentage(self, speed: str) -> Optional[int]:
         """환기 속도를 백분율로 변환"""
@@ -251,7 +246,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             return
 
         _LOGGER.debug("환기시스템 켜기 요청: %s", self._nickname)
-        payloads = [self._build_switch_payload(DEVICE_ON)]
+        payloads = [build_set_command(self._switch_subdevice, DEVICE_ON)]
 
         if self._mode_subdevice:
             target_mode = FAN_DEFAULT_MODE
@@ -263,7 +258,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                 )
 
             if target_mode != self._get_current_mode():
-                payloads.append(self._build_mode_payload(target_mode))
+                payloads.append(build_set_command(self._mode_subdevice, target_mode))
 
         if self._speed_subdevice and self._speed_options:
             target_speed = None
@@ -273,7 +268,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
                 target_speed
                 and target_speed != self._get_current_speed()
             ):
-                payloads.append(self._build_speed_payload(target_speed))
+                payloads.append(build_set_command(self._speed_subdevice, target_speed))
 
         await self._send_command(payloads)
 
@@ -284,7 +279,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             return
 
         _LOGGER.debug("환기시스템 끄기 요청: %s", self._nickname)
-        await self._send_command([self._build_switch_payload(DEVICE_OFF)])
+        await self._send_command([build_set_command(self._switch_subdevice, DEVICE_OFF)])
 
     async def async_set_percentage(self, percentage: Optional[int]) -> None:
         """환기 속도를 백분율 기반으로 설정"""
@@ -319,11 +314,11 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         payloads = []
         if not self.is_on:
-            payloads.append(self._build_switch_payload(DEVICE_ON))
+            payloads.append(build_set_command(self._switch_subdevice, DEVICE_ON))
             if self._mode_subdevice:
-                payloads.append(self._build_mode_payload(FAN_DEFAULT_MODE))
+                payloads.append(build_set_command(self._mode_subdevice, FAN_DEFAULT_MODE))
 
-        payloads.append(self._build_speed_payload(target_speed))
+        payloads.append(build_set_command(self._speed_subdevice, target_speed))
         await self._send_command(payloads)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
@@ -345,40 +340,13 @@ class CommaxFan(CoordinatorEntity, FanEntity):
 
         payloads = []
         if not self.is_on:
-            payloads.append(self._build_switch_payload(DEVICE_ON))
+            payloads.append(build_set_command(self._switch_subdevice, DEVICE_ON))
 
         if self._get_current_mode() != FAN_DEFAULT_MODE:
-            payloads.append(self._build_mode_payload(FAN_DEFAULT_MODE))
+            payloads.append(build_set_command(self._mode_subdevice, FAN_DEFAULT_MODE))
 
         if payloads:
             await self._send_command(payloads)
-
-    def _build_switch_payload(self, value: str) -> dict:
-        return {
-            "value": value,
-            "funcCommand": "set",
-            "type": "readWrite",
-            "subUuid": self._switch_subdevice.get("subUuid"),
-            "sort": SUBDEVICE_SWITCH_BINARY,
-        }
-
-    def _build_mode_payload(self, value: str) -> dict:
-        return {
-            "value": value,
-            "funcCommand": "set",
-            "type": "readWrite",
-            "subUuid": self._mode_subdevice.get("subUuid"),
-            "sort": SUBDEVICE_FAN_MODE,
-        }
-
-    def _build_speed_payload(self, value: str) -> dict:
-        return {
-            "value": value,
-            "funcCommand": "set",
-            "type": "readWrite",
-            "subUuid": self._speed_subdevice.get("subUuid"),
-            "sort": SUBDEVICE_FAN_SPEED,
-        }
 
     async def _send_command(self, subdevice_payloads: list[dict]) -> None:
         """디바이스 제어 명령 전송.
@@ -397,18 +365,15 @@ class CommaxFan(CoordinatorEntity, FanEntity):
             self._command_lock = asyncio.Lock()
         async with self._command_lock:
             for payload in subdevice_payloads:
-                device_data = {
-                    "subDevice": [payload],
-                    "rootUuid": self._root_uuid,
-                    "nickname": self._nickname,
-                    "rootDevice": self._device_data.get("rootDevice"),
-                }
+                device_data = build_device_command(self._device_data, self._nickname, payload)
 
                 _LOGGER.debug("전송할 환기 명령 데이터: %s", device_data)
                 success = await self._auth_manager.send_device_command(device_data)
 
                 if success:
-                    self._update_local_subdevice_value(payload.get("subUuid"), payload.get("value"))
+                    update_subdevice_value(
+                        self.coordinator, self._root_uuid, payload.get("subUuid"), payload.get("value")
+                    )
                 else:
                     success_all = False
                     _LOGGER.error("환기시스템 제어 실패: %s payload=%s", self._nickname, payload)
@@ -416,26 +381,7 @@ class CommaxFan(CoordinatorEntity, FanEntity):
         if success_all:
             self.async_write_ha_state()
 
-        asyncio.create_task(self._delayed_refresh())
-
-    async def _delayed_refresh(self) -> None:
-        """1초 후 상태 새로고침"""
-        await asyncio.sleep(1)
-        await self.coordinator.async_request_refresh()
-
-    def _update_local_subdevice_value(self, sub_uuid: Optional[str], value: str) -> None:
-        """로컬 서브디바이스 값을 즉시 업데이트"""
-        if not sub_uuid:
-            return
-
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == sub_uuid:
-                subdevice["value"] = value
-                break
+        schedule_refresh(self.coordinator)
 
     @callback
     def _handle_coordinator_update(self) -> None:

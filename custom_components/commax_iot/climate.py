@@ -1,5 +1,4 @@
 """Commax IoT 보일러 플랫폼"""
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -22,6 +21,13 @@ from .const import (
     SUBDEVICE_AIR_TEMPERATURE,
     SUBDEVICE_THERMOSTAT_MODE,
     SUBDEVICE_THERMOSTAT_SETPOINT,
+)
+from .device import (
+    build_device_command,
+    get_current_subdevice,
+    schedule_refresh,
+    build_set_command,
+    update_subdevice_value,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,18 +115,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         if not self._temp_subdevice:
             return None
 
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return None
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._temp_subdevice.get("subUuid"):
-                try:
-                    return float(subdevice.get("value", 0))
-                except (ValueError, TypeError):
-                    return None
-
-        return None
+        return self._live_float(self._temp_subdevice, 0)
 
     @property
     def target_temperature(self) -> Optional[float]:
@@ -128,18 +123,16 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
         if not self._setpoint_subdevice:
             return None
 
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
+        return self._live_float(self._setpoint_subdevice, 20)
+
+    def _live_float(self, subdevice: dict, missing: float) -> Optional[float]:
+        current = get_current_subdevice(self.coordinator, self._root_uuid, subdevice.get("subUuid"))
+        if current is None:
             return None
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._setpoint_subdevice.get("subUuid"):
-                try:
-                    return float(subdevice.get("value", 20))
-                except (ValueError, TypeError):
-                    return None
-
-        return None
+        try:
+            return float(current.get("value", missing))
+        except (ValueError, TypeError):
+            return None
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -148,20 +141,17 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             _LOGGER.debug("보일러 %s: mode_subdevice가 없어 OFF 모드 반환", self._nickname)
             return HVACMode.OFF
 
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            _LOGGER.debug("보일러 %s: 디바이스 데이터가 없어 OFF 모드 반환", self._nickname)
+        subdevice = get_current_subdevice(
+            self.coordinator, self._root_uuid, self._mode_subdevice.get("subUuid")
+        )
+        if subdevice is None:
+            _LOGGER.debug("보일러 %s: 모드 서브디바이스를 찾을 수 없어 OFF 모드 반환", self._nickname)
             return HVACMode.OFF
 
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._mode_subdevice.get("subUuid"):
-                current_value = str(subdevice.get("value", "")).lower()
-                mode = HVACMode.HEAT if current_value == "heat" else HVACMode.OFF
-                _LOGGER.debug("보일러 %s: 현재 모드 값 '%s' -> %s", self._nickname, current_value, mode)
-                return mode
-
-        _LOGGER.debug("보일러 %s: 모드 서브디바이스를 찾을 수 없어 OFF 모드 반환", self._nickname)
-        return HVACMode.OFF
+        current_value = str(subdevice.get("value", "")).lower()
+        mode = HVACMode.HEAT if current_value == "heat" else HVACMode.OFF
+        _LOGGER.debug("보일러 %s: 현재 모드 값 '%s' -> %s", self._nickname, current_value, mode)
+        return mode
 
     @property
     def available(self) -> bool:
@@ -212,7 +202,7 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             temperature,
             effective_mode,
         )
-        await self._send_temperature_command(str(temperature))
+        await self._send_command(self._setpoint_subdevice, str(temperature))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """HVAC 모드 설정"""
@@ -245,111 +235,37 @@ class CommaxThermostat(CoordinatorEntity, ClimateEntity):
             "heat" if normalized_mode == HVACMode.HEAT else "off",
             value,
         )
-        await self._send_mode_command(value)
+        await self._send_command(self._mode_subdevice, value)
 
-    async def _send_temperature_command(self, temperature: str) -> None:
-        """온도 설정 명령 전송"""
-        device_data = self._prepare_device_command(
-            self._setpoint_subdevice, SUBDEVICE_THERMOSTAT_SETPOINT, temperature
-        )
-        if device_data is None:
+    async def _send_command(self, subdevice: dict, value: str) -> None:
+        current_device = self.coordinator.get_device_by_uuid(self._root_uuid)
+        if not current_device:
+            _LOGGER.warning("보일러 %s: 코디네이터에서 디바이스 데이터를 찾을 수 없음", self._nickname)
             return
 
+        device_data = build_device_command(
+            current_device, current_device.get("nickname"), build_set_command(subdevice, value)
+        )
+        _LOGGER.debug("보일러 %s: API 명령 전송 - device_data: %s", self._nickname, device_data)
         success = await self._auth_manager.send_device_command(device_data)
 
         if success:
-            self._update_local_subdevice_value(
-                self._setpoint_subdevice.get("subUuid"), temperature
-            )
-            self.async_write_ha_state()
-
-        asyncio.create_task(self._delayed_refresh())
-
-    async def _send_mode_command(self, mode_value: str) -> None:
-        """모드 설정 명령 전송"""
-        _LOGGER.debug("보일러 %s: 모드 명령 전송 시작 - 값: %s", self._nickname, mode_value)
-
-        device_data = self._prepare_device_command(
-            self._mode_subdevice, SUBDEVICE_THERMOSTAT_MODE, mode_value
-        )
-        if device_data is None:
-            _LOGGER.warning("보일러 %s: device_data 준비 실패", self._nickname)
-            return
-
-        _LOGGER.debug("보일러 %s: API 명령 전송 시작 - device_data: %s", self._nickname, device_data)
-        success = await self._auth_manager.send_device_command(device_data)
-        _LOGGER.debug("보일러 %s: API 명령 결과 - success: %s", self._nickname, success)
-
-        if success:
-            _LOGGER.debug("보일러 %s: 명령 성공 - 로컬 상태 업데이트 %s = %s", self._nickname, self._mode_subdevice.get("subUuid"), mode_value)
-            self._update_local_subdevice_value(
-                self._mode_subdevice.get("subUuid"), mode_value
-            )
+            if not update_subdevice_value(self.coordinator, self._root_uuid, subdevice.get("subUuid"), value):
+                _LOGGER.warning(
+                    "보일러 %s: 대상 서브디바이스 찾을 수 없음 - UUID: %s",
+                    self._nickname,
+                    subdevice.get("subUuid"),
+                )
             self.async_write_ha_state()
         else:
             _LOGGER.warning("보일러 %s: API 명령 실패 - 로컬 상태 업데이트 안함", self._nickname)
 
-        asyncio.create_task(self._delayed_refresh())
+        schedule_refresh(self.coordinator)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """코디네이터 업데이트 처리"""
         self.async_write_ha_state()
-
-    def _prepare_device_command(self, subdevice: dict, sort: str, value: str) -> Optional[dict]:
-        """디바이스 명령 데이터 준비 - 올바른 API 구조 사용"""
-        if not subdevice:
-            return None
-
-        current_device = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not current_device:
-            return None
-
-        # API 구조에 맞게 변경할 서브디바이스만 포함
-        device_payload = {
-            "subDevice": [
-                {
-                    "value": value,
-                    "funcCommand": "set",
-                    "type": "readWrite",
-                    "subUuid": subdevice.get("subUuid"),
-                    "sort": sort
-                }
-            ],
-            "rootUuid": current_device.get("rootUuid"),
-            "nickname": current_device.get("nickname"),
-            "rootDevice": current_device.get("rootDevice")
-        }
-
-        return device_payload
-
-    async def _delayed_refresh(self) -> None:
-        """1초 후 상태 새로고침"""
-        await asyncio.sleep(1)
-        await self.coordinator.async_request_refresh()
-
-    def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
-        """로컬 서브디바이스 값을 즉시 업데이트"""
-        if not sub_uuid:
-            _LOGGER.warning("보일러 %s: sub_uuid가 누락되어 로컬 업데이트 불가", self._nickname)
-            return
-
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            _LOGGER.warning("보일러 %s: 코디네이터에서 디바이스 데이터를 찾을 수 없음", self._nickname)
-            return
-
-        updated = False
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == sub_uuid:
-                old_value = subdevice.get("value")
-                subdevice["value"] = value
-                updated = True
-                _LOGGER.debug("보일러 %s: 로컬 업데이트 완료 %s: %s -> %s", self._nickname, sub_uuid, old_value, value)
-                break
-
-        if not updated:
-            _LOGGER.warning("보일러 %s: 대상 서브디바이스 찾을 수 없음 - UUID: %s", self._nickname, sub_uuid)
 
     def _normalize_hvac_mode(self, hvac_mode: Any) -> Optional[HVACMode]:
         """HVAC 모드 입력을 표준 Enum으로 변환"""
