@@ -164,7 +164,9 @@ class CommaxLight(CoordinatorEntity, RestoreEntity, LightEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        success = await self._auth_manager.send_device_command(device_data)
+        success = await self._auth_manager.send_device_command(
+            device_data, late_retry=value == DEVICE_OFF
+        )
 
         if success:
             self._update_local_subdevice_value(

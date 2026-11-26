@@ -206,7 +206,11 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
             "rootDevice": self._device_data.get("rootDevice"),
         }
 
-        success = await self._auth_manager.send_device_command(device_data)
+        success = await self._auth_manager.send_device_command(
+            device_data,
+            late_retry=value == DEVICE_OFF
+            and self._device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT,
+        )
 
         if success:
             self._update_local_subdevice_value(

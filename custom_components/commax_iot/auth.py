@@ -11,6 +11,7 @@ import aiohttp
 from .const import (
     API_SUCCESS_CODE,
     AUTH_URL,
+    COMMAND_LATE_RETRY_DELAY,
     COMMAND_RETRY_COUNT,
     COMMAND_URL,
     COMMAND_VERIFY_DELAY,
@@ -284,8 +285,13 @@ class CommaxAuthManager:
 
         return devices
 
-    async def send_device_command(self, device_data: Dict) -> bool:
-        """디바이스 제어 명령을 전송하고, 반영 여부는 백그라운드에서 확인한다."""
+    async def send_device_command(
+        self, device_data: Dict, *, late_retry: bool = False
+    ) -> bool:
+        """디바이스 제어 명령을 전송하고, 반영 여부는 백그라운드에서 확인한다.
+
+        late_retry: 두 번 재전송해도 반영되지 않으면 늦게 한 번 더 보낸다 (조명 끄기).
+        """
         root = device_data.get("rootUuid")
         subs = device_data.get("subDevice", [])
         key = (root, tuple(sub.get("subUuid") for sub in subs))
@@ -307,7 +313,9 @@ class CommaxAuthManager:
             success = await self._post_command(device_data)
 
         if success and self._latest_command.get(key) is token and not self._closed:
-            task = asyncio.create_task(self._verify_command(device_data, key, token))
+            task = asyncio.create_task(
+                self._verify_command(device_data, key, token, late_retry)
+            )
             self._verify_tasks[key] = task
             task.add_done_callback(lambda done: self._forget_verify(key, done))
         return success
@@ -316,14 +324,19 @@ class CommaxAuthManager:
         if self._verify_tasks.get(key) is task:
             del self._verify_tasks[key]
 
-    async def _verify_command(self, device_data: Dict, key: tuple, token: object) -> None:
+    async def _verify_command(
+        self, device_data: Dict, key: tuple, token: object, late_retry: bool
+    ) -> None:
         """서버가 수락한 명령이 기기에 반영되지 않았으면 다시 보낸다.
 
         shortcut: 확인 전(대기 시간 안)에 벽 스위치로 되돌린 경우와 명령 누락을 구분하지 못해
         다시 보낸다. 기기 이벤트 순서를 알 수 있게 되면 그때 구분한다.
         """
-        for attempt in range(1, COMMAND_RETRY_COUNT + 1):
-            await asyncio.sleep(COMMAND_VERIFY_DELAY)
+        delays = [COMMAND_VERIFY_DELAY] * COMMAND_RETRY_COUNT
+        if late_retry:
+            delays.append(COMMAND_LATE_RETRY_DELAY)
+        for attempt, delay in enumerate(delays, 1):
+            await asyncio.sleep(delay)
             try:
                 applied = _command_applied(await self.get_device_list(), device_data)
             except Exception as err:  # 백그라운드 작업 경계: 확인할 수 없으면 재전송하지 않는다
@@ -340,11 +353,32 @@ class CommaxAuthManager:
                 _LOGGER.warning(
                     "명령이 기기에 반영되지 않아 재전송합니다 (%s/%s): %s",
                     attempt,
-                    COMMAND_RETRY_COUNT,
+                    len(delays),
                     device_data.get("nickname"),
                 )
                 if not await self._post_command(device_data):
                     return
+
+        # applied가 False면 마지막 반복에서 재전송했다
+        if not (late_retry and applied is False):
+            return
+        await asyncio.sleep(COMMAND_VERIFY_DELAY)
+        try:
+            applied = _command_applied(await self.get_device_list(), device_data)
+        except Exception as err:  # 백그라운드 작업 경계
+            _LOGGER.debug("마지막 재전송 반영 확인 실패: %s", err)
+            applied = None
+        if applied is False:
+            _LOGGER.warning(
+                "명령을 %s번 재전송했지만 기기에 반영되지 않았습니다: %s",
+                len(delays),
+                device_data.get("nickname"),
+            )
+        elif applied is None:
+            _LOGGER.warning(
+                "마지막 재전송이 기기에 반영됐는지 확인하지 못했습니다: %s",
+                device_data.get("nickname"),
+            )
 
     async def _post_command(self, device_data: Dict) -> bool:
         """디바이스 제어 명령 1회 전송"""

@@ -64,6 +64,7 @@ TOKEN_EXPIRE_BUFFER = 60  # 만료 1분 전 재인증 시도
 # 명령 반영 확인 (서버가 E0000으로 수락하고도 기기에 전달하지 않는 경우 대비)
 COMMAND_VERIFY_DELAY = 5  # 전송 후 반영 여부를 확인하기까지 대기 (초)
 COMMAND_RETRY_COUNT = 2  # 반영되지 않았을 때 재전송 횟수
+COMMAND_LATE_RETRY_DELAY = 7  # 조명 끄기만 마지막 재전송 뒤 이만큼 기다렸다 한 번 더 보낸다 (초)
 
 # 플랫폼 목록
 PLATFORMS = ["climate", "switch", "fan", "sensor"]
