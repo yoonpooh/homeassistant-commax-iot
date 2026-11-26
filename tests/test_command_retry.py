@@ -11,7 +11,15 @@ from tests.ha_stubs import install_homeassistant_stubs
 install_homeassistant_stubs()
 
 from custom_components.commax_iot import auth  # noqa: E402
-from custom_components.commax_iot.const import AUTH_URL, COMMAND_URL  # noqa: E402
+from custom_components.commax_iot.const import (  # noqa: E402
+    AUTH_URL,
+    COMMAND_URL,
+    DEVICE_TYPE_LIGHT,
+    DEVICE_TYPE_SWITCH,
+    SUBDEVICE_SWITCH_BINARY,
+)
+from custom_components.commax_iot.light import CommaxLight  # noqa: E402
+from custom_components.commax_iot.switch import CommaxSwitch  # noqa: E402
 
 ROOT = "root-1"
 SUB = "sub-1"
@@ -77,6 +85,24 @@ def _command(value: str, sub: str = SUB) -> dict:
     }
 
 
+def _entity(cls, manager, commax_device: str = DEVICE_TYPE_LIGHT):
+    device = {
+        "rootUuid": ROOT,
+        "nickname": "전등07",
+        "rootDevice": "switch",
+        "commaxDevice": commax_device,
+        "subDevice": [
+            {"subUuid": SUB, "sort": SUBDEVICE_SWITCH_BINARY, "type": "readWrite"}
+        ],
+    }
+    coordinator = mock.Mock(last_update_success=True)
+    coordinator.get_device_by_uuid.return_value = device
+    entity = cls(coordinator, manager, device)
+    entity.async_write_ha_state = lambda: None
+    entity._delayed_refresh = mock.AsyncMock()
+    return entity
+
+
 async def _settle() -> None:
     """백그라운드 확인 작업이 모두 끝날 때까지 기다린다."""
     results = await asyncio.gather(
@@ -89,9 +115,10 @@ async def _settle() -> None:
 
 class CommandRetryTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        patcher = mock.patch.object(auth, "COMMAND_VERIFY_DELAY", 0, create=True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name in ("COMMAND_VERIFY_DELAY", "COMMAND_LATE_RETRY_DELAY"):
+            patcher = mock.patch.object(auth, name, 0, create=True)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def _manager(self, server: FakeCommax) -> auth.CommaxAuthManager:
         return auth.CommaxAuthManager("uuid", "id", "pw", server, resource_no="r")
@@ -200,6 +227,97 @@ class CommandRetryTest(unittest.IsolatedAsyncioTestCase):
         await _settle()
 
         self.assertEqual(server.commands, ["on"])
+
+    async def test_light_off_is_resent_late_when_two_resends_are_ignored(self) -> None:
+        for cls in (CommaxSwitch, CommaxLight):
+            with self.subTest(cls.__name__):
+                server = FakeCommax(ignore=3, values={SUB: "on"})
+
+                await _entity(cls, self._manager(server)).async_turn_off()
+                await _settle()
+
+                self.assertEqual(server.commands, ["off"] * 4)
+                self.assertEqual(server.values[SUB], "off")
+
+    async def test_no_late_resend_once_light_off_is_applied(self) -> None:
+        server = FakeCommax(ignore=2, values={SUB: "on"})
+
+        await _entity(CommaxSwitch, self._manager(server)).async_turn_off()
+        await _settle()
+
+        self.assertEqual(server.commands, ["off"] * 3)
+
+    async def test_late_resend_is_only_for_turning_a_light_off(self) -> None:
+        outlet = FakeCommax(ignore=99, values={SUB: "on"})
+        light_on = FakeCommax(ignore=99, values={SUB: "off"})
+
+        await _entity(
+            CommaxSwitch, self._manager(outlet), DEVICE_TYPE_SWITCH
+        ).async_turn_off()
+        await _entity(CommaxSwitch, self._manager(light_on)).async_turn_on()
+        await _settle()
+
+        self.assertEqual(outlet.commands, ["off"] * 3)
+        self.assertEqual(light_on.commands, ["on"] * 3)
+
+    async def test_warns_when_late_resend_is_not_applied(self) -> None:
+        server = FakeCommax(ignore=99, values={SUB: "on"})
+
+        with self.assertLogs(auth._LOGGER, "WARNING") as logs:
+            await _entity(CommaxSwitch, self._manager(server)).async_turn_off()
+            await _settle()
+
+        self.assertEqual(server.commands, ["off"] * 4)
+        self.assertIn("반영되지 않았습니다", logs.output[-1])
+
+    async def test_checks_state_even_if_server_rejects_last_resend(self) -> None:
+        server = FakeCommax(ignore=99, values={SUB: "on"})
+        post = server.post
+
+        def reject_last_resend(*args, **kwargs):
+            response = post(*args, **kwargs)
+            if len(server.commands) == 4:
+                return _Response({"resultCode": "E9999"})
+            return response
+
+        server.post = reject_last_resend
+
+        with self.assertLogs(auth._LOGGER, "WARNING") as logs:
+            await _entity(CommaxSwitch, self._manager(server)).async_turn_off()
+            await _settle()
+
+        self.assertEqual(server.commands, ["off"] * 4)
+        self.assertIn("반영되지 않았습니다", logs.output[-1])
+
+    async def test_warns_when_late_resend_cannot_be_confirmed(self) -> None:
+        server = FakeCommax(ignore=99, values={SUB: "on"})
+        post = server.post
+
+        def post_then_vanish(*args, **kwargs):
+            response = post(*args, **kwargs)
+            server.listed = len(server.commands) < 4
+            return response
+
+        server.post = post_then_vanish
+
+        with self.assertLogs(auth._LOGGER, "WARNING") as logs:
+            await _entity(CommaxSwitch, self._manager(server)).async_turn_off()
+            await _settle()
+
+        self.assertEqual(server.commands, ["off"] * 4)
+        self.assertIn("확인하지 못했습니다", logs.output[-1])
+
+    async def test_newer_command_cancels_the_late_resend(self) -> None:
+        server = FakeCommax(ignore=99, values={SUB: "on"})
+        light = _entity(CommaxSwitch, self._manager(server))
+
+        await light.async_turn_off()
+        while len(server.commands) < 3:
+            await asyncio.sleep(0)
+        await light.async_turn_on()
+        await _settle()
+
+        self.assertEqual(server.commands, ["off"] * 3 + ["on"])
 
 
 if __name__ == "__main__":

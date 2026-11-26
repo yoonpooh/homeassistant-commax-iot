@@ -14,8 +14,8 @@ class MetadataTest(unittest.TestCase):
         )
         const_py = Path("custom_components/commax_iot/const.py").read_text()
 
-        self.assertEqual(manifest["version"], "2026.11.26")
-        self.assertIn('VERSION = "2026.11.26"', const_py)
+        self.assertEqual(manifest["version"], "2026.11.26.1")
+        self.assertIn('VERSION = "2026.11.26.1"', const_py)
 
 
 if __name__ == "__main__":
