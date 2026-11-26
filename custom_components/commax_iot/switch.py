@@ -208,7 +208,7 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
 
         success = await self._auth_manager.send_device_command(
             device_data,
-            late_retry=value == DEVICE_OFF
+            extra_light_off_retry=value == DEVICE_OFF
             and self._device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT,
         )
 

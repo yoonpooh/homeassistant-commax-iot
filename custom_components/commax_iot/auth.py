@@ -286,12 +286,9 @@ class CommaxAuthManager:
         return devices
 
     async def send_device_command(
-        self, device_data: Dict, *, late_retry: bool = False
+        self, device_data: Dict, *, extra_light_off_retry: bool = False
     ) -> bool:
-        """디바이스 제어 명령을 전송하고, 반영 여부는 백그라운드에서 확인한다.
-
-        late_retry: 두 번 재전송해도 반영되지 않으면 늦게 한 번 더 보낸다 (조명 끄기).
-        """
+        """디바이스 제어 명령을 전송하고, 반영 여부는 백그라운드에서 확인한다."""
         root = device_data.get("rootUuid")
         subs = device_data.get("subDevice", [])
         key = (root, tuple(sub.get("subUuid") for sub in subs))
@@ -314,7 +311,7 @@ class CommaxAuthManager:
 
         if success and self._latest_command.get(key) is token and not self._closed:
             task = asyncio.create_task(
-                self._verify_command(device_data, key, token, late_retry)
+                self._verify_command(device_data, key, token, extra_light_off_retry)
             )
             self._verify_tasks[key] = task
             task.add_done_callback(lambda done: self._forget_verify(key, done))
@@ -325,7 +322,7 @@ class CommaxAuthManager:
             del self._verify_tasks[key]
 
     async def _verify_command(
-        self, device_data: Dict, key: tuple, token: object, late_retry: bool
+        self, device_data: Dict, key: tuple, token: object, extra_light_off_retry: bool
     ) -> None:
         """서버가 수락한 명령이 기기에 반영되지 않았으면 다시 보낸다.
 
@@ -333,7 +330,7 @@ class CommaxAuthManager:
         다시 보낸다. 기기 이벤트 순서를 알 수 있게 되면 그때 구분한다.
         """
         delays = [COMMAND_VERIFY_DELAY] * COMMAND_RETRY_COUNT
-        if late_retry:
+        if extra_light_off_retry:
             delays.append(COMMAND_LATE_RETRY_DELAY)
         for attempt, delay in enumerate(delays, 1):
             await asyncio.sleep(delay)
@@ -356,18 +353,20 @@ class CommaxAuthManager:
                     len(delays),
                     device_data.get("nickname"),
                 )
-                if not await self._post_command(device_data):
+                accepted = await self._post_command(device_data)
+                if not accepted and (not extra_light_off_retry or attempt < len(delays)):
                     return
 
-        # applied가 False면 마지막 반복에서 재전송했다
-        if not (late_retry and applied is False):
+        if not extra_light_off_retry or applied is not False:
             return
         await asyncio.sleep(COMMAND_VERIFY_DELAY)
         try:
             applied = _command_applied(await self.get_device_list(), device_data)
-        except Exception as err:  # 백그라운드 작업 경계
+        except Exception as err:
             _LOGGER.debug("마지막 재전송 반영 확인 실패: %s", err)
             applied = None
+        if self._latest_command.get(key) is not token or self._closed:
+            return
         if applied is False:
             _LOGGER.warning(
                 "명령을 %s번 재전송했지만 기기에 반영되지 않았습니다: %s",

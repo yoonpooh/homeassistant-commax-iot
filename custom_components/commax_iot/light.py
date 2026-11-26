@@ -165,7 +165,7 @@ class CommaxLight(CoordinatorEntity, RestoreEntity, LightEntity):
         }
 
         success = await self._auth_manager.send_device_command(
-            device_data, late_retry=value == DEVICE_OFF
+            device_data, extra_light_off_retry=value == DEVICE_OFF
         )
 
         if success:

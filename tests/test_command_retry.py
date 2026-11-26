@@ -270,6 +270,25 @@ class CommandRetryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(server.commands, ["off"] * 4)
         self.assertIn("반영되지 않았습니다", logs.output[-1])
 
+    async def test_checks_state_even_if_server_rejects_last_resend(self) -> None:
+        server = FakeCommax(ignore=99, values={SUB: "on"})
+        post = server.post
+
+        def reject_last_resend(*args, **kwargs):
+            response = post(*args, **kwargs)
+            if len(server.commands) == 4:
+                return _Response({"resultCode": "E9999"})
+            return response
+
+        server.post = reject_last_resend
+
+        with self.assertLogs(auth._LOGGER, "WARNING") as logs:
+            await _entity(CommaxSwitch, self._manager(server)).async_turn_off()
+            await _settle()
+
+        self.assertEqual(server.commands, ["off"] * 4)
+        self.assertIn("반영되지 않았습니다", logs.output[-1])
+
     async def test_warns_when_late_resend_cannot_be_confirmed(self) -> None:
         server = FakeCommax(ignore=99, values={SUB: "on"})
         post = server.post
