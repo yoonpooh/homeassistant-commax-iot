@@ -1,5 +1,4 @@
 """Commax IoT 스위치 플랫폼"""
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -18,6 +17,14 @@ from .const import (
     DOMAIN,
     SUBDEVICE_ELECTRIC_METER,
     SUBDEVICE_SWITCH_BINARY,
+)
+from .device import (
+    build_device_command,
+    find_subdevice,
+    get_current_subdevice,
+    schedule_refresh,
+    build_set_command,
+    update_subdevice_value,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,15 +55,7 @@ async def async_setup_entry(
             device_data.get("commaxDevice") == DEVICE_TYPE_SWITCH
             and device_data.get("rootDevice") == "switch"
         ):
-            # 필수 subDevice 확인
-            has_switch = False
-            for subdevice in device_data.get("subDevice", []):
-                if (subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY and
-                    subdevice.get("type") == "readWrite"):
-                    has_switch = True
-                    break
-
-            if has_switch:
+            if find_subdevice(device_data, SUBDEVICE_SWITCH_BINARY):
                 entities.append(CommaxSwitch(coordinator, auth_manager, device_data))
 
     _LOGGER.info("총 %d개의 스위치 디바이스 등록됨", len(entities))
@@ -75,23 +74,9 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         self._root_uuid = device_data.get("rootUuid")
         self._nickname = device_data.get("nickname", "Commax Switch")
 
-        self._switch_subdevice = next(
-            (
-                subdevice
-                for subdevice in device_data.get("subDevice", [])
-                if subdevice.get("sort") == SUBDEVICE_SWITCH_BINARY
-                and subdevice.get("type") == "readWrite"
-            ),
-            None,
-        )
-
-        self._electric_meter_subdevice = next(
-            (
-                subdevice
-                for subdevice in device_data.get("subDevice", [])
-                if subdevice.get("sort") == SUBDEVICE_ELECTRIC_METER
-            ),
-            None,
+        self._switch_subdevice = find_subdevice(device_data, SUBDEVICE_SWITCH_BINARY)
+        self._electric_meter_subdevice = find_subdevice(
+            device_data, SUBDEVICE_ELECTRIC_METER, read_write=False
         )
 
         self._attr_unique_id = f"{DOMAIN}_{self._root_uuid}_switch"
@@ -109,19 +94,12 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         if not self._switch_subdevice:
             return False
 
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
+        subdevice = get_current_subdevice(
+            self.coordinator, self._root_uuid, self._switch_subdevice.get("subUuid")
+        )
+        if subdevice is None or subdevice.get("value") is None:
             return False
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._switch_subdevice.get("subUuid"):
-                current_value = subdevice.get("value")
-                if current_value is None:
-                    return False
-                normalized = str(current_value).lower()
-                return normalized in {DEVICE_ON, "1", "true"}
-
-        return False
+        return str(subdevice.get("value")).lower() in {DEVICE_ON, "1", "true"}
 
     @property
     def available(self) -> bool:
@@ -134,36 +112,34 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
         if not self._electric_meter_subdevice:
             return None
 
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
+        subdevice = get_current_subdevice(
+            self.coordinator, self._root_uuid, self._electric_meter_subdevice.get("subUuid")
+        )
+        if subdevice is None:
             return None
 
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == self._electric_meter_subdevice.get("subUuid"):
-                raw_value = subdevice.get("value")
-                precision_raw = subdevice.get("precision") or self._electric_meter_subdevice.get("precision")
+        raw_value = subdevice.get("value")
+        precision_raw = subdevice.get("precision") or self._electric_meter_subdevice.get("precision")
 
-                try:
-                    precision = int(precision_raw) if precision_raw is not None else 0
-                except (TypeError, ValueError):
-                    precision = 0
+        try:
+            precision = int(precision_raw) if precision_raw is not None else 0
+        except (TypeError, ValueError):
+            precision = 0
 
-                try:
-                    value = float(raw_value)
-                except (TypeError, ValueError):
-                    _LOGGER.debug(
-                        "전력 값 변환 실패 - raw: %s, device: %s",
-                        raw_value,
-                        self._nickname,
-                    )
-                    return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            _LOGGER.debug(
+                "전력 값 변환 실패 - raw: %s, device: %s",
+                raw_value,
+                self._nickname,
+            )
+            return None
 
-                if precision > 0:
-                    value /= 10**precision
+        if precision > 0:
+            value /= 10**precision
 
-                return value
-
-        return None
+        return value
 
     @property
     def device_class(self) -> str:
@@ -191,53 +167,21 @@ class CommaxSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _send_command(self, value: str) -> None:
         """디바이스 제어 명령 전송"""
-        device_data = {
-            "subDevice": [
-                {
-                    "value": value,
-                    "funcCommand": "set",
-                    "type": "readWrite",
-                    "subUuid": self._switch_subdevice.get("subUuid"),
-                    "sort": SUBDEVICE_SWITCH_BINARY,
-                }
-            ],
-            "rootUuid": self._root_uuid,
-            "nickname": self._nickname,
-            "rootDevice": self._device_data.get("rootDevice"),
-        }
-
         success = await self._auth_manager.send_device_command(
-            device_data,
+            build_device_command(
+                self._device_data, self._nickname, build_set_command(self._switch_subdevice, value)
+            ),
             extra_light_off_retry=value == DEVICE_OFF
             and self._device_data.get("commaxDevice") == DEVICE_TYPE_LIGHT,
         )
 
         if success:
-            self._update_local_subdevice_value(
-                self._switch_subdevice.get("subUuid"), value
+            update_subdevice_value(
+                self.coordinator, self._root_uuid, self._switch_subdevice.get("subUuid"), value
             )
             self.async_write_ha_state()
 
-        asyncio.create_task(self._delayed_refresh())
-
-    async def _delayed_refresh(self) -> None:
-        """1초 후 상태 새로고침"""
-        await asyncio.sleep(1)
-        await self.coordinator.async_request_refresh()
-
-    def _update_local_subdevice_value(self, sub_uuid: str, value: str) -> None:
-        """로컬 서브디바이스 값을 즉시 업데이트"""
-        if not sub_uuid:
-            return
-
-        device_data = self.coordinator.get_device_by_uuid(self._root_uuid)
-        if not device_data:
-            return
-
-        for subdevice in device_data.get("subDevice", []):
-            if subdevice.get("subUuid") == sub_uuid:
-                subdevice["value"] = value
-                break
+        schedule_refresh(self.coordinator)
 
     @callback
     def _handle_coordinator_update(self) -> None:

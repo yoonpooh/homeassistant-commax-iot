@@ -44,15 +44,8 @@ SUBDEVICE_FAN_SPEED = "fanSpeed"
 DEVICE_OFF = "off"
 DEVICE_ON = "on"
 
-# 실제 API에서 반환되는 값들 (로그 확인 결과)
-DEVICE_VALUE_OFF = "off"
-DEVICE_VALUE_ON = "on"
-
 # 환기시스템 모드
-FAN_MODE_BYPASS = "bypass"
-FAN_MODE_MANUAL = "manual"
-FAN_MODE_AUTO = "auto"
-FAN_DEFAULT_MODE = FAN_MODE_AUTO
+FAN_DEFAULT_MODE = "auto"
 
 # API 응답 코드
 API_SUCCESS_CODE = "E0000"

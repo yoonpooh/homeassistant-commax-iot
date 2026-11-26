@@ -3,12 +3,11 @@ import logging
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .auth import CommaxApiError, CommaxAuthManager, CommaxAuthenticationError
+from .auth import CommaxApiError, CommaxAuthManager
 from .const import (
     CONF_MOBILE_UUID,
     CONF_RESOURCE_NO,
@@ -112,7 +111,7 @@ class CommaxDataUpdateCoordinator(DataUpdateCoordinator):
             self._devices = device_data
             return device_data
 
-        except (CommaxAuthenticationError, CommaxApiError) as err:
+        except CommaxApiError as err:
             raise UpdateFailed(f"Commax API 오류: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"데이터 업데이트 실패: {err}") from err

@@ -114,15 +114,13 @@ class CommaxIoTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("설정 중 예상치 못한 오류 발생")
                 errors["base"] = "unknown"
 
-        password_field = str
-
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
                     vol.Optional(CONF_NAME, default=NAME): str,
                     vol.Required(CONF_USER_ID): str,
-                    vol.Required(CONF_USER_PASS): password_field,
+                    vol.Required(CONF_USER_PASS): str,
                     vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
                 }
             ),
