@@ -28,11 +28,9 @@ def install_homeassistant_stubs() -> None:
     entity = types.ModuleType("homeassistant.helpers.entity")
     entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
     update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
-    restore_state = types.ModuleType("homeassistant.helpers.restore_state")
     sensor = types.ModuleType("homeassistant.components.sensor")
     climate = types.ModuleType("homeassistant.components.climate")
     fan = types.ModuleType("homeassistant.components.fan")
-    light = types.ModuleType("homeassistant.components.light")
     switch = types.ModuleType("homeassistant.components.switch")
 
     class ConfigFlow:
@@ -102,13 +100,7 @@ def install_homeassistant_stubs() -> None:
     class FanEntity:
         pass
 
-    class LightEntity:
-        pass
-
     class SwitchEntity:
-        pass
-
-    class RestoreEntity:
         pass
 
     class FanEntityFeature(IntFlag):
@@ -131,9 +123,6 @@ def install_homeassistant_stubs() -> None:
         MEASUREMENT = "measurement"
         TOTAL_INCREASING = "total_increasing"
 
-    class ColorMode:
-        ONOFF = "onoff"
-
     def callback(func):
         return func
 
@@ -146,7 +135,6 @@ def install_homeassistant_stubs() -> None:
 
     const.ATTR_TEMPERATURE = "temperature"
     const.CONF_NAME = "name"
-    const.STATE_ON = "on"
     const.CONCENTRATION_MICROGRAMS_PER_CUBIC_METER = "ug/m3"
     const.CONCENTRATION_PARTS_PER_MILLION = "ppm"
     const.PERCENTAGE = "%"
@@ -177,7 +165,6 @@ def install_homeassistant_stubs() -> None:
     update_coordinator.CoordinatorEntity = CoordinatorEntity
     update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
     update_coordinator.UpdateFailed = UpdateFailed
-    restore_state.RestoreEntity = RestoreEntity
 
     sensor.SensorDeviceClass = SensorDeviceClass
     sensor.SensorEntity = SensorEntity
@@ -188,8 +175,6 @@ def install_homeassistant_stubs() -> None:
     climate.HVACMode = HVACMode
     fan.FanEntity = FanEntity
     fan.FanEntityFeature = FanEntityFeature
-    light.LightEntity = LightEntity
-    light.ColorMode = ColorMode
     switch.SwitchEntity = SwitchEntity
     aiohttp.ClientSession = ClientSession
     aiohttp.ClientError = ClientError
@@ -211,11 +196,9 @@ def install_homeassistant_stubs() -> None:
             "homeassistant.helpers.entity": entity,
             "homeassistant.helpers.entity_platform": entity_platform,
             "homeassistant.helpers.update_coordinator": update_coordinator,
-            "homeassistant.helpers.restore_state": restore_state,
             "homeassistant.components.sensor": sensor,
             "homeassistant.components.climate": climate,
             "homeassistant.components.fan": fan,
-            "homeassistant.components.light": light,
             "homeassistant.components.switch": switch,
         }
     )

@@ -86,7 +86,6 @@ class CommaxAuthManager:
         self._session = session
 
         self._access_token: Optional[str] = None
-        self._refresh_token: Optional[str] = None
         self._token_expires_at: Optional[int] = None
         self._authenticated = False
         self._verify_tasks: Dict[tuple, asyncio.Task] = {}
@@ -139,7 +138,6 @@ class CommaxAuthManager:
                 return False
 
             self._access_token = result.get("accessToken")
-            self._refresh_token = result.get("refreshToken")
             expire_raw = result.get("expireIn") or result.get("expire_in")
             try:
                 expire_in = int(expire_raw)
